@@ -1,0 +1,5 @@
+# The signing vectors are compared byte for byte and by blob id, so git never
+# converts their line endings.
+vectors/** -text
+# approval.raw holds bytes that are not UTF-8.
+vectors/**/*.raw binary
