@@ -7,6 +7,35 @@ import Foundation
 /// namespace, such as git's, does not verify as a directive.
 public let directiveNamespace = "attention/directive/v1"
 
+/// The namespace of a Board approval, so an approval and a directive never
+/// verify as each other.
+public let approvalNamespace = "board/approve/v1"
+
+/// What a Board statement asks the owner to approve, named by its first line.
+public enum Approval: Equatable, Sendable {
+  /// `board/approve/v1`: a pending effect a plugin asked for.
+  case effect
+  /// `board/write/v1`: the owner's own write to the rules or effects.
+  case write
+
+  /// The kind of approval `statement` is, or nil when its first line names none.
+  public init?(statement: String) {
+    switch statement.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first {
+    case "board/approve/v1": self = .effect
+    case "board/write/v1": self = .write
+    default: return nil
+    }
+  }
+
+  /// The window's heading.
+  public var title: String {
+    switch self {
+    case .effect: "Approve a pending effect"
+    case .write: "Approve a change to your rules"
+    }
+  }
+}
+
 private let keyType = "ecdsa-sha2-nistp256"
 private let magic = Data("SSHSIG".utf8)
 

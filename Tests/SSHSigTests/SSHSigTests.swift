@@ -20,6 +20,17 @@ final class SSHSigTests: XCTestCase {
     XCTAssertNotEqual(try verify(signing: "directive", checking: "directive", namespace: "git"), 0)
   }
 
+  func testAn_approval_does_not_verify_as_a_directive_and_a_directive_signature_does() throws {
+    XCTAssertNotEqual(
+      try verify(
+        signing: "board/approve/v1\n", checking: "board/approve/v1\n", namespace: approvalNamespace),
+      0)
+    XCTAssertEqual(
+      try verify(
+        signing: "board/approve/v1\n", checking: "board/approve/v1\n", namespace: directiveNamespace
+      ), 0)
+  }
+
   func testMany_keys_verify_so_r_and_s_are_encoded_whatever_their_top_bits() throws {
     for _ in 0..<32 {
       XCTAssertEqual(

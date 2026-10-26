@@ -3,6 +3,7 @@
 //
 //   attention-sign key               print the public key, making it on first use
 //   attention-sign sign <statement>  show the statement, sign it, print the signature
+//   attention-sign approve <statement>  the same for a Board approval, in its own namespace
 //
 // When the owner requests changes instead, `sign` prints their feedback and exits 3.
 import CryptoKit
@@ -47,12 +48,23 @@ MainActor.assumeIsolated {
     case "key":
       let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
       print(openSSHPublicKey(x963: key.publicKey.x963Representation, comment: "attention"))
-    case "sign" where arguments.count == 2:
+    case let command where (command == "sign" || command == "approve") && arguments.count == 2:
       let message = try Data(contentsOf: URL(fileURLWithPath: arguments.last!))
       guard let statement = String(data: message, encoding: .utf8) else {
         fail("the statement is not UTF-8")
       }
-      switch choose(statement) {
+      // A directive is signed in its namespace and an approval in Board's, so the
+      // owner's signature of one never stands for the other.
+      let approval = Approval(statement: statement)
+      if command == "approve" && approval == nil {
+        fail(
+          "the statement is not a Board approval: its first line is not board/approve/v1 or board/write/v1"
+        )
+      }
+      if command == "sign" && approval != nil {
+        fail("the statement is a Board approval: sign it with `attention-sign approve`")
+      }
+      switch choose(statement, approval: approval) {
       case .sign: break
       case .cancel: fail("the owner cancelled, so nothing was signed")
       case .changes(let feedback):
@@ -60,16 +72,20 @@ MainActor.assumeIsolated {
         exit(3)
       }
       let context = LAContext()
-      context.localizedReason = "sign the directive you just read"
+      context.localizedReason =
+        approval == nil ? "sign the directive you just read" : "approve what you just read"
       let key = try loadKey(context: context)
       let armor = try sign(
-        message: message, x963: key.publicKey.x963Representation, namespace: directiveNamespace
+        message: message, x963: key.publicKey.x963Representation,
+        namespace: approval == nil ? directiveNamespace : approvalNamespace
       ) {
         try key.signature(for: $0).rawRepresentation
       }
       print(armor, terminator: "")
     default:
-      fail("usage: attention-sign key | attention-sign sign <statement-file>")
+      fail(
+        "usage: attention-sign key | attention-sign sign <statement-file> | attention-sign approve <statement-file>"
+      )
     }
   } catch {
     fail("\(error)")

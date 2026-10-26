@@ -10,6 +10,8 @@ import SwiftUI
 struct SigningView: View {
   let text: String
   let parsed: Statement?
+  /// A Board approval, shown as its exact text under its own heading.
+  let approval: Approval?
   let finish: (Choice) -> Void
   @State private var requesting = false
   @State private var feedback = ""
@@ -22,8 +24,10 @@ struct SigningView: View {
         if let parsed {
           parts(parsed)
         } else {
-          Text("This statement is not in the usual form, so the window shows its exact text.")
-            .foregroundStyle(.secondary)
+          if approval == nil {
+            Text("This statement is not in the usual form, so the window shows its exact text.")
+              .foregroundStyle(.secondary)
+          }
           sectionTitle("Exact signed text", note: "these bytes are signed")
           plainBox(text).layoutPriority(1)
         }
@@ -44,7 +48,7 @@ struct SigningView: View {
 
   var heading: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text("Sign a directive").font(.title2.weight(.semibold))
+      Text(approval?.title ?? "Sign a directive").font(.title2.weight(.semibold))
       if let parsed {
         HStack(spacing: 6) {
           Text("Expires \(longDate(parsed.expires))")
@@ -220,20 +224,22 @@ final class Closer: NSObject, NSWindowDelegate {
 
 /// Shows the statement in a window and returns what the owner chose.
 @MainActor
-func choose(_ text: String) -> Choice {
+func choose(_ text: String, approval: Approval?) -> Choice {
   let app = NSApplication.shared
   app.setActivationPolicy(.accessory)
   let window = NSWindow(
     contentRect: .zero, styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
     backing: .buffered, defer: false)
-  window.title = "Sign a directive"
+  window.title = approval?.title ?? "Sign a directive"
   window.titleVisibility = .hidden
   window.titlebarAppearsTransparent = true
   window.isMovableByWindowBackground = true
   window.standardWindowButton(.miniaturizeButton)?.isHidden = true
   window.standardWindowButton(.zoomButton)?.isHidden = true
   var choice = Choice.cancel
-  let view = SigningView(text: text, parsed: Statement.parse(text)) { chosen in
+  // An approval is never parsed as a directive.
+  let parsed = approval == nil ? Statement.parse(text) : nil
+  let view = SigningView(text: text, parsed: parsed, approval: approval) { chosen in
     choice = chosen
     app.stopModal()
   }
