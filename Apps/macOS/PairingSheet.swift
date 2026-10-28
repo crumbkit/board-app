@@ -172,8 +172,9 @@ struct PairingSheet: View {
         option(.approvals, "Agent requests", "When an agent wants to write or change a file.")
         Divider()
         option(.directives, "Directives", "Standing instructions every agent follows.")
-        // Rule changes is not offered: Board verifies them in board/approve/v1,
-        // so an approvals line already admits them and the option would mislead.
+        Divider()
+        option(
+          .rules, "Rule changes", "These let agents do more without asking. Best kept to this Mac.")
       }
       HStack(alignment: .top) {
         DisclosureGroup("Details") {

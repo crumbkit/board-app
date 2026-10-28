@@ -184,7 +184,26 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 
 cd "$(dirname "$0")/.."
-TOTAL_STAGES=8
+
+# add_line FILE KEY LINE: drops the lines of FILE that contain KEY and appends
+# LINE. It writes through a symlink to its target and keeps an existing mode.
+add_line() {
+  local target mode tmp
+  target=$(realpath "$1" 2>/dev/null || printf '%s' "$1")
+  mode=$(stat -f %Lp "$target" 2>/dev/null || echo 644)
+  if (( 8#$mode & 8#022 )); then
+    warn "$target may be written by other users, so Board would not trust it. Run: chmod go-w $target"
+    return 1
+  fi
+  mkdir -p "$(dirname "$target")"
+  tmp=$(mktemp "$(dirname "$target")/.allowed_signers.XXXXXX")
+  trap 'rm -f "$tmp"' RETURN
+  if [ -e "$target" ]; then grep -vF -- "$2" "$target" > "$tmp" || [ $? -eq 1 ]; fi
+  printf '%s\n' "$3" >> "$tmp"
+  chmod "$mode" "$tmp"
+  mv "$tmp" "$target"
+}
+TOTAL_STAGES=9
 
 banner "Board on your iPhone and Mac"
 
@@ -268,6 +287,36 @@ if [ -z "$id" ] || [ "$id" = com.stemmacorp.board ] || [ -n "$replace" ]; then
     warn "The install failed. The message above says why."
     confirm "Try again?" || { SKIPPED+=("install on the Mac: bin/install-mac"); break; }
   done
+fi
+pause
+
+stage "Let this Mac's key sign for Board"
+board_signers="$HOME/.config/board/allowed_signers"
+if ! command -v attention-sign >/dev/null 2>&1; then
+  warn "attention-sign is not on your PATH, so this Mac's key cannot be read."
+  SKIPPED+=("add this Mac's key to $board_signers once attention-sign is installed")
+elif [ -e "$board_signers" ] && [ ! -r "$board_signers" ]; then
+  warn "$board_signers cannot be read, so it was left as it is."
+  SKIPPED+=("make $board_signers readable, then run bin/setup again")
+elif ! mac_key=$(attention-sign key) || [ -z "$mac_key" ]; then
+  warn "attention-sign could not print this Mac's key."
+  SKIPPED+=("add this Mac's key to $board_signers: attention-sign key failed")
+else
+  mac_line="owner namespaces=\"board/approve/v1,board/write/v1\" $mac_key"
+  say "Board checks approvals and rule changes against $board_signers."
+  say "This Mac's Touch ID key needs this line there (the key is cut short here):"
+  note "${mac_line:0:90}…"
+  if grep -qxF "$mac_line" "$board_signers" 2>/dev/null; then
+    say "The line is already there."
+  elif confirm "Add it, replacing any older line for this Mac's key?"; then
+    if add_line "$board_signers" " ${mac_key#* }" "$mac_line"; then
+      say "Added. Lines for other devices were kept."
+    else
+      SKIPPED+=("add this Mac's key to $board_signers")
+    fi
+  else
+    SKIPPED+=("add this Mac's key to $board_signers")
+  fi
 fi
 pause
 

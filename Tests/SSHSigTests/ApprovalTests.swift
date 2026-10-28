@@ -17,4 +17,9 @@ final class ApprovalTests: XCTestCase {
     XCTAssertEqual(Approval.write.title, "Approve a change to your rules")
     XCTAssertNotEqual(approvalNamespace, directiveNamespace)
   }
+
+  func testAPendingEffectIsSignedInTheApprovalNamespaceAndARuleChangeInItsOwn() {
+    XCTAssertEqual(Approval.effect.namespace, "board/approve/v1")
+    XCTAssertEqual(Approval.write.namespace, "board/write/v1")
+  }
 }

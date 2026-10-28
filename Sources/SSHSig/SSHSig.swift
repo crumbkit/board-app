@@ -11,6 +11,10 @@ public let directiveNamespace = "attention/directive/v1"
 /// verify as each other.
 public let approvalNamespace = "board/approve/v1"
 
+/// The namespace of the owner's own change to rules or effects, so an approvals
+/// key that may not change rules cannot sign one.
+public let writeNamespace = "board/write/v1"
+
 /// What a Board statement asks the owner to approve, named by its first line.
 public enum Approval: Equatable, Sendable {
   /// `board/approve/v1`: a pending effect a plugin asked for.
@@ -24,6 +28,14 @@ public enum Approval: Equatable, Sendable {
     case "board/approve/v1": self = .effect
     case "board/write/v1": self = .write
     default: return nil
+    }
+  }
+
+  /// The namespace the statement is signed in, which Board checks it against.
+  public var namespace: String {
+    switch self {
+    case .effect: approvalNamespace
+    case .write: writeNamespace
     }
   }
 

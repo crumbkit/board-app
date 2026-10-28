@@ -3,7 +3,7 @@
 //
 //   attention-sign key               print the public key, making it on first use
 //   attention-sign sign <statement>  show the statement, sign it, print the signature
-//   attention-sign approve <statement>  the same for a Board approval, in its own namespace
+//   attention-sign approve <statement>  the same for a Board approval, in the namespace its first line names
 //
 // When the owner requests changes instead, `sign` prints their feedback and exits 3.
 import CryptoKit
@@ -77,7 +77,7 @@ MainActor.assumeIsolated {
       let key = try loadKey(context: context)
       let armor = try sign(
         message: message, x963: key.publicKey.x963Representation,
-        namespace: approval == nil ? directiveNamespace : approvalNamespace
+        namespace: approval?.namespace ?? directiveNamespace
       ) {
         try key.signature(for: $0).rawRepresentation
       }

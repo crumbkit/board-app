@@ -161,7 +161,7 @@ public enum AllowedSigners {
   public static func boardLine(_ device: Device, scope: Scope) -> String? {
     var namespaces: [String] = []
     if scope.contains(.approvals) { namespaces.append(approvalNamespace) }
-    if scope.contains(.rules) { namespaces.append("board/write/v1") }
+    if scope.contains(.rules) { namespaces.append(writeNamespace) }
     return line(device, namespaces)
   }
 

@@ -33,10 +33,15 @@
 - A phone's key is replaced when its blob does not load, for example after
   a restore onto another phone. The blob is kept out of backups.
 
+- The Mac's own line in Board's file names `board/approve/v1` and
+  `board/write/v1`. The iPhone is the trusted device, but until it can sign
+  rule changes the Mac's key signs them too. `bin/setup` adds the line,
+  replacing any older line for the same key.
+- `attention-sign approve` signs a statement in the namespace its first line
+  names: `board/approve/v1` for a pending effect, `board/write/v1` for a rule
+  change.
+
 ## Known gaps
 
-- Board verifies rule changes in `board/approve/v1`, so an approvals line
-  also admits them. The sheet does not offer Rule changes until Board
-  verifies them in `board/write/v1`.
 - Any program running as the owner can edit the allowed signers files.
   Only the sandbox an agent runs in stops that.
