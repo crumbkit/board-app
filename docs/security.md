@@ -12,14 +12,14 @@
 ## Allowed signers
 
 - Board checks approvals against `~/.config/board/allowed_signers`;
-  attention checks directives against `~/.config/attention/allowed_signers`.
+  attention checks orders against `~/.config/attention/allowed_signers`.
   Both use principal `owner`.
 - A paired device gets one line per file, limited by `namespaces=`:
 
   | Scope | File | Namespace |
   | --- | --- | --- |
   | Agent requests | board | `board/approve/v1` |
-  | Directives | attention | `attention/directive/v1` |
+  | Orders | attention | `attention/order/v1` |
   | Rule changes | board | `board/write/v1` |
 
 - The line ends in `board-app/device/<id>`. Pairing again replaces it;

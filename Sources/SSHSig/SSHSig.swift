@@ -3,11 +3,11 @@
 import CryptoKit
 import Foundation
 
-/// The namespace every directive signature carries. A signature made for another
-/// namespace, such as git's, does not verify as a directive.
-public let directiveNamespace = "attention/directive/v1"
+/// The namespace every order signature carries. A signature made for another
+/// namespace, such as git's, does not verify as an order.
+public let orderNamespace = "attention/order/v1"
 
-/// The namespace of a Board approval, so an approval and a directive never
+/// The namespace of a Board approval, so an approval and an order never
 /// verify as each other.
 public let approvalNamespace = "board/approve/v1"
 

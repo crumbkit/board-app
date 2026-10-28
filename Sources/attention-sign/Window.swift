@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The window that shows the owner what they are about to sign.
 ///
-/// It shows the directive, expiry, pin and context as separate parts only when
+/// It shows the order, expiry, pin and context as separate parts only when
 /// `Statement.parse` accepts the text, which means the parts rebuild exactly the
 /// signed bytes; otherwise it shows the exact signed text. The context is plain text, so nothing in it renders away.
 struct SigningView: View {
@@ -48,7 +48,7 @@ struct SigningView: View {
 
   var heading: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(approval?.title ?? "Sign a directive").font(.title2.weight(.semibold))
+      Text(approval?.title ?? "Sign an order").font(.title2.weight(.semibold))
       if let parsed {
         HStack(spacing: 6) {
           Text("Expires \(longDate(parsed.expires))")
@@ -69,10 +69,10 @@ struct SigningView: View {
 
   @ViewBuilder func parts(_ parsed: Statement) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      sectionTitle("Directive", note: "binding")
+      sectionTitle("Order", note: "binding")
       GroupBox {
         ScrollView {
-          Text(parsed.directive)
+          Text(parsed.order)
             .font(.title3)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -101,7 +101,7 @@ struct SigningView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .topLeading) {
           if feedback.isEmpty {
-            Text("What is wrong with the directive? The agent reads exactly what you write here.")
+            Text("What is wrong with the order? The agent reads exactly what you write here.")
               .foregroundStyle(.tertiary)
               .padding(.horizontal, 11)
               .padding(.vertical, 6)
@@ -130,7 +130,7 @@ struct SigningView: View {
         } label: {
           Label("Request changes…", systemImage: "text.bubble").labelStyle(.titleAndIcon)
         }
-        .help("Don't sign, and tell the agent what is wrong with the directive.")
+        .help("Don't sign, and tell the agent what is wrong with the order.")
         Spacer()
         Button("Cancel") { finish(.cancel) }.keyboardShortcut(.cancelAction)
         Button {
@@ -230,14 +230,14 @@ func choose(_ text: String, approval: Approval?) -> Choice {
   let window = NSWindow(
     contentRect: .zero, styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
     backing: .buffered, defer: false)
-  window.title = approval?.title ?? "Sign a directive"
+  window.title = approval?.title ?? "Sign an order"
   window.titleVisibility = .hidden
   window.titlebarAppearsTransparent = true
   window.isMovableByWindowBackground = true
   window.standardWindowButton(.miniaturizeButton)?.isHidden = true
   window.standardWindowButton(.zoomButton)?.isHidden = true
   var choice = Choice.cancel
-  // An approval is never parsed as a directive.
+  // An approval is never parsed as an order.
   let parsed = approval == nil ? Statement.parse(text) : nil
   let view = SigningView(text: text, parsed: parsed, approval: approval) { chosen in
     choice = chosen

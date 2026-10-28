@@ -86,10 +86,10 @@ struct AllowedSignersTests {
     #expect(text == "owner MAC\nowner NEW \(phone.label)\n")
   }
 
-  @Test func a_phone_with_no_board_scope_gets_no_board_line_and_one_with_directives_gets_one() {
+  @Test func a_phone_with_no_board_scope_gets_no_board_line_and_one_with_orders_gets_one() {
     let phone = device()
-    #expect(AllowedSigners.boardLine(phone, scope: [.directives]) == nil)
-    #expect(AllowedSigners.attentionLine(phone, scope: [.directives]) != nil)
+    #expect(AllowedSigners.boardLine(phone, scope: [.orders]) == nil)
+    #expect(AllowedSigners.attentionLine(phone, scope: [.orders]) != nil)
     #expect(AllowedSigners.attentionLine(phone, scope: [.approvals]) == nil)
   }
 
@@ -116,10 +116,10 @@ struct AllowedSignersTests {
     #expect(try verify(key, line: line, namespace: "board/write/v1") != 0)
   }
 
-  @Test func ssh_keygen_admits_a_directive_signed_by_a_phone_granted_directives() throws {
+  @Test func ssh_keygen_admits_an_order_signed_by_a_phone_granted_orders() throws {
     let (phone, key) = signingDevice()
-    let line = AllowedSigners.attentionLine(phone, scope: [.directives])!
-    #expect(try verify(key, line: line, namespace: directiveNamespace) == 0)
+    let line = AllowedSigners.attentionLine(phone, scope: [.orders])!
+    #expect(try verify(key, line: line, namespace: orderNamespace) == 0)
   }
 
   private func verify(_ key: P256.Signing.PrivateKey, line: String, namespace: String) throws

@@ -9,13 +9,13 @@ final class ApprovalTests: XCTestCase {
     XCTAssertEqual(Approval(statement: "board/write/v1\npath: /preferences/a\n"), .write)
     XCTAssertNil(Approval(statement: "board/approve/v2\neffect: 0a\n"))
     XCTAssertNil(Approval(statement: " board/approve/v1\n"))
-    XCTAssertNil(Approval(statement: "attention/directive/v1\nexpires: 2027-01-16\n"))
+    XCTAssertNil(Approval(statement: "attention/order/v1\nexpires: 2027-01-16\n"))
   }
 
-  func testTheTwoApprovalsAndADirectiveHaveTheirOwnHeadings() {
+  func testTheTwoApprovalsAndAnOrderHaveTheirOwnHeadings() {
     XCTAssertEqual(Approval.effect.title, "Approve a pending effect")
     XCTAssertEqual(Approval.write.title, "Approve a change to your rules")
-    XCTAssertNotEqual(approvalNamespace, directiveNamespace)
+    XCTAssertNotEqual(approvalNamespace, orderNamespace)
   }
 
   func testAPendingEffectIsSignedInTheApprovalNamespaceAndARuleChangeInItsOwn() {

@@ -171,7 +171,7 @@ struct PairingSheet: View {
         Text("This iPhone can approve").fontWeight(.semibold).padding(.bottom, 2)
         option(.approvals, "Agent requests", "When an agent wants to write or change a file.")
         Divider()
-        option(.directives, "Directives", "Standing instructions every agent follows.")
+        option(.orders, "Orders", "Standing instructions every agent follows.")
         Divider()
         option(
           .rules, "Rule changes", "These let agents do more without asking. Best kept to this Mac.")

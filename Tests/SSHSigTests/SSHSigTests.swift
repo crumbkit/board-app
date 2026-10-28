@@ -8,33 +8,33 @@ import XCTest
 final class SSHSigTests: XCTestCase {
   func testSsh_keygen_verifies_a_signed_message() throws {
     XCTAssertEqual(
-      try verify(signing: "directive", checking: "directive", namespace: directiveNamespace), 0)
+      try verify(signing: "order", checking: "order", namespace: orderNamespace), 0)
   }
 
   func testSsh_keygen_refuses_a_changed_message() throws {
     XCTAssertNotEqual(
-      try verify(signing: "directive", checking: "directive!", namespace: directiveNamespace), 0)
+      try verify(signing: "order", checking: "order!", namespace: orderNamespace), 0)
   }
 
   func testSsh_keygen_refuses_a_signature_from_another_namespace() throws {
-    XCTAssertNotEqual(try verify(signing: "directive", checking: "directive", namespace: "git"), 0)
+    XCTAssertNotEqual(try verify(signing: "order", checking: "order", namespace: "git"), 0)
   }
 
-  func testAn_approval_does_not_verify_as_a_directive_and_a_directive_signature_does() throws {
+  func testAn_approval_does_not_verify_as_an_order_and_an_order_signature_does() throws {
     XCTAssertNotEqual(
       try verify(
         signing: "board/approve/v1\n", checking: "board/approve/v1\n", namespace: approvalNamespace),
       0)
     XCTAssertEqual(
       try verify(
-        signing: "board/approve/v1\n", checking: "board/approve/v1\n", namespace: directiveNamespace
+        signing: "board/approve/v1\n", checking: "board/approve/v1\n", namespace: orderNamespace
       ), 0)
   }
 
   func testMany_keys_verify_so_r_and_s_are_encoded_whatever_their_top_bits() throws {
     for _ in 0..<32 {
       XCTAssertEqual(
-        try verify(signing: "directive", checking: "directive", namespace: directiveNamespace), 0)
+        try verify(signing: "order", checking: "order", namespace: orderNamespace), 0)
     }
   }
 
@@ -50,14 +50,14 @@ final class SSHSigTests: XCTestCase {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let signers = directory.appendingPathComponent("allowed_signers")
-    let signature = directory.appendingPathComponent("directive.sig")
+    let signature = directory.appendingPathComponent("order.sig")
     try "owner \(openSSHPublicKey(x963: x963, comment: "test"))\n".write(
       to: signers, atomically: true, encoding: .utf8)
     try armor.write(to: signature, atomically: true, encoding: .utf8)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
     process.arguments = [
-      "-Y", "verify", "-f", signers.path, "-I", "owner", "-n", directiveNamespace, "-s",
+      "-Y", "verify", "-f", signers.path, "-I", "owner", "-n", orderNamespace, "-s",
       signature.path,
     ]
     let input = Pipe()

@@ -1,4 +1,4 @@
-// attention-sign: shows the owner a directive statement and signs exactly those
+// attention-sign: shows the owner an order statement and signs exactly those
 // bytes with a Secure Enclave key, which asks for Touch ID on every signature.
 //
 //   attention-sign key               print the public key, making it on first use
@@ -53,7 +53,7 @@ MainActor.assumeIsolated {
       guard let statement = String(data: message, encoding: .utf8) else {
         fail("the statement is not UTF-8")
       }
-      // A directive is signed in its namespace and an approval in Board's, so the
+      // An order is signed in its namespace and an approval in Board's, so the
       // owner's signature of one never stands for the other.
       let approval = Approval(statement: statement)
       if command == "approve" && approval == nil {
@@ -73,11 +73,11 @@ MainActor.assumeIsolated {
       }
       let context = LAContext()
       context.localizedReason =
-        approval == nil ? "sign the directive you just read" : "approve what you just read"
+        approval == nil ? "sign the order you just read" : "approve what you just read"
       let key = try loadKey(context: context)
       let armor = try sign(
         message: message, x963: key.publicKey.x963Representation,
-        namespace: approval?.namespace ?? directiveNamespace
+        namespace: approval?.namespace ?? orderNamespace
       ) {
         try key.signature(for: $0).rawRepresentation
       }
