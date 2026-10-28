@@ -2,5 +2,5 @@
 # The format and build gates. Warnings fail the build.
 set -eu
 cd "$(dirname "$0")/.."
-swift format lint --strict -r Sources Tests Package.swift
+swift format lint --strict -r Sources Tests Apps Package.swift
 swift build -Xswiftc -warnings-as-errors

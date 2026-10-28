@@ -1,0 +1,34 @@
+#!/bin/sh
+# Builds the Mac app signed for development and installs it as
+# ~/Applications/Board.app, then opens it. An app already there that is not
+# this one is refused unless --replace is given, which moves it to the Trash.
+#
+#   bin/install-mac [--replace]
+set -eu
+cd "$(dirname "$0")/.."
+bin/project
+
+out=.build/xcode
+xcodebuild -project Board.xcodeproj -scheme Board-macOS -configuration Release \
+  -derivedDataPath "$out" -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet build
+
+dest="$HOME/Applications/Board.app"
+built="$out/Build/Products/Release/Board.app"
+if [ -e "$dest" ]; then
+  id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$dest/Contents/Info.plist" 2>/dev/null || true)
+  if [ "$id" != com.stemmacorp.board ] && [ "${1:-}" != --replace ]; then
+    echo "bin/install-mac: $dest is another app ($id); run again with --replace to move it to the Trash" >&2
+    exit 1
+  fi
+fi
+# Copy first, so a failed copy leaves the installed app in place.
+mkdir -p "$HOME/Applications"
+staged="$HOME/Applications/.Board.app.new"
+rm -rf "$staged"
+ditto "$built" "$staged"
+osascript -e 'tell application id "com.stemmacorp.board" to quit' >/dev/null 2>&1 || true
+if [ -e "$dest" ]; then
+  osascript -e "tell application \"Finder\" to delete POSIX file \"$dest\"" >/dev/null
+fi
+mv "$staged" "$dest"
+open "$dest"

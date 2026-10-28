@@ -1,1 +1,3 @@
 .build/
+Board.xcodeproj/
+.env
