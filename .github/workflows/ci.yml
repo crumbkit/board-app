@@ -1,5 +1,6 @@
-# Runs bin/lint and bin/test on every pull request and on main. They need
-# macOS, because the helper uses CryptoKit and LocalAuthentication.
+# Runs bin/lint and bin/test, and builds both apps with bin/build-apps, on
+# every pull request and on main. They need macOS, because the helper uses
+# CryptoKit and LocalAuthentication, and the apps need Xcode 27.
 name: ci
 
 on:
@@ -24,3 +25,15 @@ jobs:
           persist-credentials: false
       - run: bin/lint
       - run: bin/test
+
+  apps:
+    # The preview image with Xcode 27, which the apps' iOS 27 APIs need.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: xcodebuild -version
+      - run: brew install xcodegen && xcodegen --version
+      - run: bin/build-apps

@@ -22,8 +22,8 @@ docs/bundle.md.
 ## Gates
 
 Run `bin/lint` and `bin/test` before every push. CI runs both on macOS. They
-cover the Swift package only; the apps build through `bin/install-phone` and
-`bin/install-mac`.
+cover the Swift package only. CI also builds both apps unsigned with
+`bin/build-apps`; run it before a push that changes `Apps/` or `project.yml`.
 
 ## Writing
 

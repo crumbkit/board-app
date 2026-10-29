@@ -1,0 +1,8 @@
+# The Board release bin/bundle writes. bin/project includes this file only
+# when Bundle/board exists, so a build without it ships no release.
+targets:
+  Board-macOS:
+    sources:
+      - path: Bundle/board
+        type: folder
+        buildPhase: resources

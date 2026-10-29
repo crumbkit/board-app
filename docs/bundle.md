@@ -22,7 +22,8 @@ installs it with `install`; `INSTALL.md` beside it tells the agent how.
   `BOARD_SRC` and `ATTENTION` name other checkouts. It reads them through git,
   so their working trees do not matter. It refuses to run while `Sources/` or
   `Install/` has uncommitted changes.
-- The Mac app ships `Bundle/board` when it exists. `Bundle/` is not committed.
+- The Mac app ships `Bundle/board` when `bin/project` finds it. `Bundle/` is
+  not committed.
 - It needs cargo, jq and the Swift toolchain.
 - `Install/test` installs `Bundle/board` into a scratch home, with a stub
   `claude`, and checks the links, binaries, refusals and enabled plugins. It

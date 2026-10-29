@@ -1,0 +1,11 @@
+#!/bin/sh
+# Builds both apps unsigned, as a fresh clone would: the Mac app and the
+# iPhone and iPad app. CI runs it. It signs nothing and installs nothing.
+set -eu
+cd "$(dirname "$0")/.."
+bin/project
+for pair in "Board-macOS|platform=macOS" "Board-iOS|generic/platform=iOS"; do
+  scheme=${pair%%|*}
+  xcodebuild -project Board.xcodeproj -scheme "$scheme" -destination "${pair#*|}" \
+    -derivedDataPath .build/xcode-apps CODE_SIGNING_ALLOWED=NO -quiet build
+done

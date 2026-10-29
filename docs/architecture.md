@@ -30,9 +30,11 @@
 - `bin/lint`, `bin/test`: the package's gates. CI runs them on macOS.
   `bin/lint` first runs `bin/check-signing`, the signing firewall.
 - `bin/project`: generates `Board.xcodeproj` from `project.yml` with
-  XcodeGen. The project is not committed.
+  XcodeGen, adding `Bundle.yml` when `Bundle/board` exists. The project is
+  not committed.
+- `bin/build-apps`: builds both apps unsigned, as on a fresh clone. CI runs
+  it.
 - `bin/install-phone`, `bin/install-mac`: build, sign and install an app.
 - `bin/setup`: walks the owner through first-time setup.
 
-Not built: the apps are not built in CI; the bundle of `board`, plugins,
-skills and hooks.
+Not built: the bundle of `board`, plugins, skills and hooks.

@@ -1,5 +1,10 @@
 # The Board apps for iPhone, iPad and Mac. `bin/project` generates
 # Board.xcodeproj from this file with XcodeGen; the project is not committed.
+# bin/project sets BOARD_BUNDLE when Bundle/board exists. Running xcodegen
+# directly leaves it unset, which leaves the release out.
+include:
+  - path: Bundle.yml
+    enable: ${BOARD_BUNDLE}
 name: Board
 options:
   bundleIdPrefix: com.stemmacorp
@@ -51,11 +56,6 @@ targets:
     sources:
       - Apps/Shared
       - Apps/macOS
-      # bin/bundle writes it; a build without it ships no Board release.
-      - path: Bundle/board
-        type: folder
-        optional: true
-        buildPhase: resources
     dependencies:
       - package: board-app
         product: Pairing
