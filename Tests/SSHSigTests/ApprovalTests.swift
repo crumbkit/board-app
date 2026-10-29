@@ -6,7 +6,7 @@ import XCTest
 final class ApprovalTests: XCTestCase {
   func testAStatementIsAnApprovalOnlyWhenItsFirstLineIsExactlyABoardHeader() {
     XCTAssertEqual(Approval(statement: "board/approve/v1\neffect: 0a\n"), .effect)
-    XCTAssertEqual(Approval(statement: "board/write/v1\npath: /preferences/a\n"), .write)
+    XCTAssertEqual(Approval(statement: "board/write/v1\npath: /effects/a\n"), .write)
     XCTAssertNil(Approval(statement: "board/approve/v2\neffect: 0a\n"))
     XCTAssertNil(Approval(statement: " board/approve/v1\n"))
     XCTAssertNil(Approval(statement: "attention/order/v1\nexpires: 2027-01-16\n"))
@@ -14,11 +14,11 @@ final class ApprovalTests: XCTestCase {
 
   func testTheTwoApprovalsAndAnOrderHaveTheirOwnHeadings() {
     XCTAssertEqual(Approval.effect.title, "Approve a pending effect")
-    XCTAssertEqual(Approval.write.title, "Approve a change to your rules")
+    XCTAssertEqual(Approval.write.title, "Approve your own protected write")
     XCTAssertNotEqual(approvalNamespace, orderNamespace)
   }
 
-  func testAPendingEffectIsSignedInTheApprovalNamespaceAndARuleChangeInItsOwn() {
+  func testAPendingEffectIsSignedInTheApprovalNamespaceAndAnOwnerWriteInItsOwn() {
     XCTAssertEqual(Approval.effect.namespace, "board/approve/v1")
     XCTAssertEqual(Approval.write.namespace, "board/write/v1")
   }

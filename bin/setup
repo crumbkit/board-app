@@ -303,7 +303,7 @@ elif ! mac_key=$(attention-sign key) || [ -z "$mac_key" ]; then
   SKIPPED+=("add this Mac's key to $board_signers: attention-sign key failed")
 else
   mac_line="owner namespaces=\"board/approve/v1,board/write/v1\" $mac_key"
-  say "Board checks approvals and rule changes against $board_signers."
+  say "Board checks approvals, your own writes under effects/ and your removal of .board/board.json against $board_signers."
   say "This Mac's Touch ID key needs this line there (the key is cut short here):"
   note "${mac_line:0:90}…"
   if grep -qxF "$mac_line" "$board_signers" 2>/dev/null; then

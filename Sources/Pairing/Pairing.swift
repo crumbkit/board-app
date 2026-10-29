@@ -13,8 +13,6 @@ public struct Scope: OptionSet, Codable, Hashable, Sendable {
   public static let approvals = Scope(rawValue: 1 << 0)
   /// Orders, signed in `attention/order/v1`.
   public static let orders = Scope(rawValue: 1 << 1)
-  /// The owner's own writes to rules and effects, signed in `board/write/v1`.
-  public static let rules = Scope(rawValue: 1 << 2)
 
   /// What the pairing sheet ticks before the owner changes anything.
   public static let suggested: Scope = [.approvals, .orders]
@@ -158,11 +156,10 @@ public struct Reveal: Sendable {
 /// for Board and `~/.config/attention/allowed_signers` for attention.
 public enum AllowedSigners {
   /// The device's line for Board's file, or nil when it may sign nothing there.
+  /// A device never gets `board/write/v1`; only the Mac's key signs the owner's
+  /// own writes.
   public static func boardLine(_ device: Device, scope: Scope) -> String? {
-    var namespaces: [String] = []
-    if scope.contains(.approvals) { namespaces.append(approvalNamespace) }
-    if scope.contains(.rules) { namespaces.append(writeNamespace) }
-    return line(device, namespaces)
+    line(device, scope.contains(.approvals) ? [approvalNamespace] : [])
   }
 
   /// The device's line for attention's file, or nil when it may not sign orders.

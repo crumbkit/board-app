@@ -172,9 +172,6 @@ struct PairingSheet: View {
         option(.approvals, "Agent requests", "When an agent wants to write or change a file.")
         Divider()
         option(.orders, "Orders", "Standing instructions every agent follows.")
-        Divider()
-        option(
-          .rules, "Rule changes", "These let agents do more without asking. Best kept to this Mac.")
       }
       HStack(alignment: .top) {
         DisclosureGroup("Details") {

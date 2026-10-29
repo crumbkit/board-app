@@ -11,15 +11,15 @@ public let orderNamespace = "attention/order/v1"
 /// verify as each other.
 public let approvalNamespace = "board/approve/v1"
 
-/// The namespace of the owner's own change to rules or effects, so an approvals
-/// key that may not change rules cannot sign one.
+/// The namespace of the owner's own write under `effects/`, so an approvals
+/// key that may not make one cannot sign one.
 public let writeNamespace = "board/write/v1"
 
 /// What a Board statement asks the owner to approve, named by its first line.
 public enum Approval: Equatable, Sendable {
   /// `board/approve/v1`: a pending effect a plugin asked for.
   case effect
-  /// `board/write/v1`: the owner's own write to the rules or effects.
+  /// `board/write/v1`: the owner's own write under `effects/`.
   case write
 
   /// The kind of approval `statement` is, or nil when its first line names none.
@@ -43,7 +43,7 @@ public enum Approval: Equatable, Sendable {
   public var title: String {
     switch self {
     case .effect: "Approve a pending effect"
-    case .write: "Approve a change to your rules"
+    case .write: "Approve your own protected write"
     }
   }
 }

@@ -20,8 +20,9 @@
   | --- | --- | --- |
   | Agent requests | board | `board/approve/v1` |
   | Orders | attention | `attention/order/v1` |
-  | Rule changes | board | `board/write/v1` |
 
+- No device gets `board/write/v1`, the owner's own protected writes.
+  A phone paired before this changed keeps it until it pairs again.
 - The line ends in `board-app/device/<id>`. Pairing again replaces it;
   every other line stays.
 - The Mac writes the files after Touch ID. It follows a symlink and keeps
@@ -34,12 +35,12 @@
   a restore onto another phone. The blob is kept out of backups.
 
 - The Mac's own line in Board's file names `board/approve/v1` and
-  `board/write/v1`. The iPhone is the trusted device, but until it can sign
-  rule changes the Mac's key signs them too. `bin/setup` adds the line,
+  `board/write/v1`. The Mac's key signs the owner's own writes under
+  `effects/` and the removal of `.board/board.json`. `bin/setup` adds the line,
   replacing any older line for the same key.
 - `attention-sign approve` signs a statement in the namespace its first line
-  names: `board/approve/v1` for a pending effect, `board/write/v1` for a rule
-  change.
+  names: `board/approve/v1` for a pending effect, `board/write/v1` for the owner's
+  own write.
 
 ## Known gaps
 

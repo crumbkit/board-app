@@ -201,7 +201,6 @@ struct PairingView: View {
     var things: [String] = []
     if grant.scope.contains(.approvals) { things.append("agent requests") }
     if grant.scope.contains(.orders) { things.append("orders") }
-    if grant.scope.contains(.rules) { things.append("rule changes") }
     let device = UIDevice.current.model
     guard !things.isEmpty else {
       return "This \(device) can see requests from \(grant.macName) but cannot approve them."

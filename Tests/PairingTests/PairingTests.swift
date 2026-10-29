@@ -93,26 +93,22 @@ struct AllowedSignersTests {
     #expect(AllowedSigners.attentionLine(phone, scope: [.approvals]) == nil)
   }
 
-  @Test func the_board_line_names_each_granted_namespace() {
+  @Test func the_board_line_names_only_the_approval_namespace_whatever_the_scope() {
     let phone = device()
     #expect(
-      AllowedSigners.boardLine(phone, scope: [.approvals])!.hasPrefix(
+      AllowedSigners.boardLine(phone, scope: Scope(rawValue: ~0))!.hasPrefix(
         "owner namespaces=\"board/approve/v1\" ecdsa-sha2-nistp256 "))
-    #expect(
-      AllowedSigners.boardLine(phone, scope: [.approvals, .rules])!.hasPrefix(
-        "owner namespaces=\"board/approve/v1,board/write/v1\" "))
   }
 
-  @Test func ssh_keygen_admits_a_paired_phone_signature_in_a_granted_namespace() throws {
+  @Test func ssh_keygen_admits_a_paired_phone_approval() throws {
     let (phone, key) = signingDevice()
-    let line = AllowedSigners.boardLine(phone, scope: [.approvals, .rules])!
-    #expect(try verify(key, line: line, namespace: "board/write/v1") == 0)
+    let line = AllowedSigners.boardLine(phone, scope: Scope(rawValue: ~0))!
+    #expect(try verify(key, line: line, namespace: "board/approve/v1") == 0)
   }
 
-  @Test func ssh_keygen_refuses_a_paired_phone_signature_in_a_namespace_it_was_not_granted() throws
-  {
+  @Test func ssh_keygen_refuses_a_paired_phone_signature_of_an_owner_write() throws {
     let (phone, key) = signingDevice()
-    let line = AllowedSigners.boardLine(phone, scope: [.approvals])!
+    let line = AllowedSigners.boardLine(phone, scope: Scope(rawValue: ~0))!
     #expect(try verify(key, line: line, namespace: "board/write/v1") != 0)
   }
 
