@@ -23,13 +23,7 @@ enum PhoneKey {
       }
       try FileManager.default.removeItem(at: file)
     }
-    var error: Unmanaged<CFError>?
-    guard
-      let access = SecAccessControlCreateWithFlags(
-        nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet],
-        &error)
-    else { throw error!.takeRetainedValue() as Error }
-    let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
+    let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access())
     try FileManager.default.createDirectory(
       at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
     try key.dataRepresentation.write(
@@ -42,18 +36,39 @@ enum PhoneKey {
     return key
   }
 
+  /// Who may use the key: the owner, by the biometry enrolled when it was made.
+  private static func access() throws -> SecAccessControl {
+    var error: Unmanaged<CFError>?
+    guard
+      let access = SecAccessControlCreateWithFlags(
+        nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet],
+        &error)
+    else { throw error!.takeRetainedValue() as Error }
+    return access
+  }
+
   /// The armored SSH signature of the effect's approval statement, in the
-  /// namespace Board checks it in. The Secure Enclave asks for Face ID.
-  static func approve(_ effect: Effect) throws -> String {
+  /// namespace Board checks it in. It asks for Face ID before the Secure
+  /// Enclave signs, so a cancel is LocalAuthentication's own error.
+  static func approve(_ effect: Effect) async throws -> String {
     let key = try load()
     let context = LAContext()
-    context.localizedReason = "approve what you just read"
+    _ = try await context.evaluateAccessControl(
+      access(), operation: .useKeySign, localizedReason: "approve what you just read")
     let signer = try SecureEnclave.P256.Signing.PrivateKey(
       dataRepresentation: key.dataRepresentation, authenticationContext: context)
     return try sign(
       message: Data(effect.approval.utf8), x963: key.publicKey.x963Representation,
       namespace: Approval.effect.namespace
     ) { try signer.signature(for: $0).rawRepresentation }
+  }
+
+  /// Whether `error` is the owner or the system cancelling Face ID, which
+  /// needs no message.
+  static func isCancel(_ error: Error) -> Bool {
+    let error = error as NSError
+    return error.domain == LAErrorDomain
+      && [LAError.userCancel, .appCancel, .systemCancel].map(\.rawValue).contains(error.code)
   }
 
   /// The id this phone pairs under. It stays the same across pairings, so

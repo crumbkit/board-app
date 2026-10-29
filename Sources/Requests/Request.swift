@@ -14,14 +14,20 @@ public struct Request: Identifiable, Sendable {
   public let priorContent: Data?
   /// The blob at the effect's path now, or nil when no file is there.
   public let current: String?
+  /// The file at a plain action's path now, which the action would use. It is
+  /// not part of what the owner signs.
+  public let currentContent: Data?
 
-  public init(effect: Effect, boardName: String, asked: Date, priorContent: Data?, current: String?)
-  {
+  public init(
+    effect: Effect, boardName: String, asked: Date, priorContent: Data?, current: String?,
+    currentContent: Data? = nil
+  ) {
     self.effect = effect
     self.boardName = boardName
     self.asked = asked
     self.priorContent = priorContent
     self.current = current
+    self.currentContent = currentContent
   }
 
   public var id: String { effect.id }
@@ -97,9 +103,10 @@ public struct Request: Identifiable, Sendable {
   public var refused: String { "Refused. \(plugin) has been told no." }
 
   /// Whether the file changed after the plugin asked, so an approval would
-  /// not fit: the blob there now is not the one the put replaces.
+  /// not fit: the blob there now is not the one the put replaces, or the one
+  /// the removal names.
   public var isStale: Bool {
-    guard effect.op == "put" else { return false }
+    guard effect.op == "put" || (effect.op == "rm" && effect.prior != nil) else { return false }
     return current?.lowercased() != effect.prior?.lowercased()
   }
 
@@ -120,6 +127,54 @@ public struct Request: Identifiable, Sendable {
   var text: String? {
     effect.text
       ?? (effect.op == "rm" ? priorContent.map { String(decoding: $0, as: UTF8.self) } : nil)
+  }
+
+  /// The two-up rows of what a put changes in a text file or a record's
+  /// JSON, every line added when there was no file, or nil for a plain action
+  /// or when the replaced blob could not be read.
+  public var lineRows: [DiffRow]? {
+    if effect.op == "rm", let priorContent {
+      return LineDiff.rows(String(decoding: priorContent, as: UTF8.self), "")
+    }
+    guard let content = effect.content else { return nil }
+    if effect.prior == nil { return LineDiff.rows("", content) }
+    guard let priorContent else { return nil }
+    // A record is compared as Board prints it, so formatting alone shows no change.
+    let old =
+      effect.record != nil
+      ? (try? JSONValue.parse(priorContent))?.pretty
+      : nil
+    return LineDiff.rows(old ?? String(decoding: priorContent, as: UTF8.self), content)
+  }
+
+  /// A record put's fields, compared with the record it replaces, or nil when
+  /// the put writes text or the replaced blob is not a JSON record.
+  public var fields: (changed: [FieldRow], same: [String])? {
+    guard let record = effect.record else { return nil }
+    guard effect.prior != nil else { return FieldDiff.compare(.object([]), record) }
+    guard let priorContent, let old = try? JSONValue.parse(priorContent) else { return nil }
+    return FieldDiff.compare(old, record)
+  }
+
+  /// The last segment of the path, which a plain action acts on: `report`.
+  public var target: String { effect.path.split(separator: "/").last.map(String.init) ?? "" }
+
+  /// What approving allows, in one sentence the screen prints in bold.
+  public var allows: String {
+    if case .action(let verb) = kind {
+      return "Approving lets \(plugin) \(verb) from this \(target) whenever it runs."
+    }
+    return "Approving lets \(plugin) write exactly this version."
+  }
+
+  /// What the approval does not cover, or why it can go stale.
+  public var limits: String {
+    if case .action(let verb) = kind {
+      return
+        "Your approval names the \(target), not its words. If the \(target) changes, \(plugin) can \(verb) the new words."
+    }
+    return
+      "If the \(noun) changes first, this approval no longer fits and \(plugin) has to ask again."
   }
 
   /// The `key: value` lines between a text's opening `---` lines, with a

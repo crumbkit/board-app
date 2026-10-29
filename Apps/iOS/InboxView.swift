@@ -11,10 +11,12 @@ struct InboxView: View {
   @State private var board: String?
   @State private var choosingBoard = false
   @State private var halfOpen = false
+  /// The request screen open, by request id.
+  @State private var path: [String] = []
   @Environment(\.horizontalSizeClass) private var sizeClass
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: $path) {
       GeometryReader { geometry in
         let portrait = geometry.size.height > geometry.size.width
         if sizeClass == .regular && halfOpen && portrait {
@@ -26,16 +28,45 @@ struct InboxView: View {
         }
       }
       .toolbar(.hidden, for: .navigationBar)
+      .navigationTitle("Inbox")
+      .navigationDestination(for: String.self) { id in
+        if let request = requests.request(id) {
+          RequestView(request: request, requests: requests)
+        }
+      }
       .onChange(of: requests.inbox.boards.map(\.name)) { _, names in
         // A board leaves the list once nothing waits in it.
         if let board, !names.contains(board) { self.board = nil }
       }
+      .onChange(of: requests.inbox.requests.map(\.id)) { _, ids in
+        // A request answered here or elsewhere closes its screen.
+        path.removeAll { !ids.contains($0) }
+      }
     }
     .background(HingeReader(halfOpen: $halfOpen))
+    .overlay(alignment: .bottom) { toast }
     .task { await requests.watch() }
   }
 
   private var title: String { board ?? "All boards" }
+
+  /// What the last answer did, for four seconds.
+  @ViewBuilder private var toast: some View {
+    if let message = requests.message {
+      Label(message, systemImage: "checkmark")
+        .font(.footnote)
+        .foregroundStyle(Color(.systemBackground))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 14)
+        .padding(.bottom, 26)
+        .task(id: message) {
+          try? await Task.sleep(for: .seconds(4))
+          requests.message = nil
+        }
+    }
+  }
   private var shown: [Request] { requests.inbox.requests(in: board) }
 
   // MARK: Layouts
@@ -128,7 +159,10 @@ struct InboxView: View {
           OutOfDate(shared: shared)
         }
         ForEach(shown) { request in
-          RequestRow(request: request, now: context.date)
+          NavigationLink(value: request.id) {
+            RequestRow(request: request, now: context.date)
+          }
+          .buttonStyle(.plain)
           if request.id != shown.last?.id { Divider() }
         }
       }

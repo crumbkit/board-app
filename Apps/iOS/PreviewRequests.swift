@@ -61,7 +61,16 @@ enum PreviewRequests {
   static var review: Request {
     request(
       fields: ["plugin": "review", "op": "review.post", "path": "/reviews/fix-sync/report"],
-      board: "owner/board-src", minutesAgo: 108)
+      board: "owner/board-src", minutesAgo: 108,
+      currentContent: """
+        Changes requested · 2 findings
+
+        crates/board-ops/src/sync.rs:212
+        A push that fails after the fetch leaves the mount pin moved, so the next sync skips commits.
+
+        docs/architecture/writes.md
+        Says sync retries once; the code retries three times.
+        """)
   }
 
   static var longTask: Request {
@@ -76,11 +85,29 @@ enum PreviewRequests {
       ], prior: text, current: "9c1d2e3", minutesAgo: 26 * 60)
   }
 
+  /// The task after someone else changed it, so the approval would not fit.
+  static var stale: Request {
+    request(
+      fields: [
+        "plugin": "tasks", "op": "put", "path": "/tasks/write-the-release-notes.md",
+        "prior": "4e5b030", "text": taskAfter,
+      ], prior: taskBefore, current: "7aa01be", minutesAgo: 1)
+  }
+
+  /// The task whose old version the Mac could not read.
+  static var noPrior: Request {
+    request(
+      fields: [
+        "plugin": "tasks", "op": "put", "path": "/tasks/write-the-release-notes.md",
+        "prior": "4e5b030", "text": taskAfter,
+      ], prior: nil, current: "4e5b030", minutesAgo: 1)
+  }
+
   static var all: [Request] { [task, control, review, longTask] }
 
   private static func request(
     fields: [String: Any], board: String = "owner/board", prior: String? = nil,
-    current: String? = nil, minutesAgo: Double
+    current: String? = nil, minutesAgo: Double, currentContent: String? = nil
   ) -> Request {
     var object = fields
     object["$type"] = "board/effect/v1"
@@ -90,6 +117,6 @@ enum PreviewRequests {
     return Request(
       effect: try! Effect(json: data), boardName: board,
       asked: Date().addingTimeInterval(-minutesAgo * 60), priorContent: prior.map { Data($0.utf8) },
-      current: current)
+      current: current, currentContent: currentContent.map { Data($0.utf8) })
   }
 }

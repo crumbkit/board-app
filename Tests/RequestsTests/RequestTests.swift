@@ -121,4 +121,10 @@ final class RequestTests: XCTestCase {
     let b = try Self.request(Self.control, asked: 5)
     XCTAssertEqual(Inbox([a, b]).requests.map(\.id), Inbox([b, a]).requests.map(\.id))
   }
+
+  func testARemovalIsStaleWhenTheFileChangedAfterItWasAsked() throws {
+    let rm = #""plugin": "tasks", "op": "rm", "path": "/tasks/a.md", "prior": "aaaa""#
+    XCTAssertFalse(try Self.request(rm, current: "aaaa").isStale)
+    XCTAssertTrue(try Self.request(rm, current: "bbbb").isStale)
+  }
 }

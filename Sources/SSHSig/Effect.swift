@@ -111,7 +111,7 @@ public func gitBlobID(_ bytes: Data) -> String {
 /// as Rust's `char::escape_default` writes it: the controls, format characters
 /// and line and paragraph separators, and the Hangul fillers, but not the
 /// zero-width joiner and non-joiner.
-func shown(_ text: String) -> String {
+public func shown(_ text: String) -> String {
   var out = ""
   for scalar in text.unicodeScalars {
     guard hidden(scalar) else {

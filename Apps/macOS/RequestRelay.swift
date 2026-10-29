@@ -53,7 +53,8 @@ final class RequestRelay {
       requests[effect.id] = SharedRequest(
         effect: bytes, boardName: await boardName(board),
         asked: Date(timeIntervalSince1970: TimeInterval(seconds.trimmed) ?? 0),
-        prior: await prior(effect, in: board), current: await current(effect, in: board))
+        prior: await prior(effect, in: board), current: await current(effect, in: board),
+        currentContent: effect.content == nil ? await currentContent(effect, in: board) : nil)
     }
     return requests
   }
@@ -84,6 +85,16 @@ final class RequestRelay {
       if let blob = try? await git(board, ["rev-parse", "--verify", "-q", "HEAD:" + candidate]) {
         return blob.trimmed
       }
+    }
+    return nil
+  }
+
+  /// The file at a plain action's path on HEAD, which the phone shows as what
+  /// the action would use now.
+  private func currentContent(_ effect: Effect, in board: URL) async -> Data? {
+    let file = String(effect.path.drop { $0 == "/" })
+    for candidate in [file, file + ".json"] {
+      if let data = try? await gitData(board, ["show", "HEAD:" + candidate]) { return data }
     }
     return nil
   }

@@ -20,6 +20,8 @@ struct SharedRequest: Sendable {
   let prior: Data?
   /// The blob at the effect's path now, or nil when there is no file there.
   let current: String?
+  /// For a plain action, the file at its path now, which the action would use.
+  var currentContent: Data? = nil
 
   /// The effect, or nil when the bytes are not one. A request whose effect
   /// does not hash to its record's name is never shown.
@@ -39,7 +41,7 @@ struct SharedRequest: Sendable {
     parsed.map {
       Request(
         effect: $0, boardName: boardName, asked: asked, priorContent: verifiedPrior,
-        current: current)
+        current: current, currentContent: currentContent)
     }
   }
 }
@@ -114,6 +116,7 @@ struct RequestCloud: Sendable {
       record["asked"] = request.asked
       record["prior"] = try asset(request.prior, id + ".prior")
       record["current"] = request.current
+      record["currentContent"] = try asset(request.currentContent, id + ".current")
       saving.append(record)
     }
     let shared = CKRecord(recordType: "Shared", recordID: name(sharedName))
@@ -160,7 +163,7 @@ struct RequestCloud: Sendable {
       else { continue }
       let request = SharedRequest(
         effect: effect, boardName: board, asked: asked, prior: read(record["prior"]),
-        current: record["current"] as? String)
+        current: record["current"] as? String, currentContent: read(record["currentContent"]))
       guard let parsed = request.parsed, parsed.id == record.recordID.recordName else { continue }
       requests[parsed.id] = request
     }
