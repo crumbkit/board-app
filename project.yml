@@ -43,12 +43,19 @@ targets:
       properties:
         com.apple.developer.icloud-container-identifiers: [iCloud.com.stemmacorp.board]
         com.apple.developer.icloud-services: [CloudKit]
+        # TestFlight builds always use Production, so every build does unless
+        # CLOUDKIT_ENVIRONMENT=Development is set, and the phone and the Mac
+        # read the same records however each was signed.
+        com.apple.developer.icloud-container-environment: $(CLOUDKIT_ENVIRONMENT:default=Production)
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_NSFaceIDUsageDescription: Board uses Face ID to sign what you approve.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        # App Store Connect refuses an iPad app that does not allow every
+        # orientation, since iPad multitasking needs them.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
   Board-macOS:
     type: application
     platform: macOS
@@ -68,6 +75,10 @@ targets:
       properties:
         com.apple.developer.icloud-container-identifiers: [iCloud.com.stemmacorp.board]
         com.apple.developer.icloud-services: [CloudKit]
+        # TestFlight builds always use Production, so every build does unless
+        # CLOUDKIT_ENVIRONMENT=Development is set, and the phone and the Mac
+        # read the same records however each was signed.
+        com.apple.developer.icloud-container-environment: $(CLOUDKIT_ENVIRONMENT:default=Production)
     settings:
       base:
         ENABLE_HARDENED_RUNTIME: YES
