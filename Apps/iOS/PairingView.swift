@@ -69,6 +69,7 @@ final class PhonePairing {
       try? await cloud.withdraw(request.id, grant: true)
       self.request = nil
       phase = .paired(grant)
+      UserDefaults.standard.set(true, forKey: pairedKey)
     } catch {
       phase = .failed(Self.explain(error))
     }

@@ -4,6 +4,7 @@
 // `board answer` and removes both records.
 import CloudKit
 import Foundation
+import Requests
 import SSHSig
 
 /// A pending effect as the Mac shares it, with what the phone needs to show it.
@@ -31,6 +32,15 @@ struct SharedRequest: Sendable {
       gitBlobID(prior).hasPrefix(named)
     else { return nil }
     return prior
+  }
+
+  /// The request as the screens show it, or nil when the effect does not parse.
+  var request: Request? {
+    parsed.map {
+      Request(
+        effect: $0, boardName: boardName, asked: asked, priorContent: verifiedPrior,
+        current: current)
+    }
   }
 }
 

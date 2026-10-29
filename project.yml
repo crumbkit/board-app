@@ -31,6 +31,8 @@ targets:
         product: Pairing
       - package: board-app
         product: SSHSig
+      - package: board-app
+        product: Requests
     entitlements:
       path: Apps/iOS/Board.entitlements
       properties:
@@ -59,6 +61,8 @@ targets:
         product: Pairing
       - package: board-app
         product: SSHSig
+      - package: board-app
+        product: Requests
     entitlements:
       path: Apps/macOS/Board.entitlements
       properties:
