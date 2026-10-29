@@ -60,8 +60,8 @@ final class PhoneRequests {
   /// The request with this id, waiting or read earlier.
   func request(_ id: String) -> Request? { known[id] }
 
-  /// Signs the request's statement with Face ID and sends the approval.
-  /// Throws when the owner cancels Face ID or iCloud refuses the answer.
+  /// Signs the request's statement with Face ID or Touch ID and sends the
+  /// approval. Throws when the owner cancels it or iCloud refuses the answer.
   func approve(_ request: Request) async throws {
     let effect = request.effect
     let signature = try await Task.detached { try await PhoneKey.approve(effect) }.value

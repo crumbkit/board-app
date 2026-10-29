@@ -176,7 +176,7 @@ struct PairingSheet: View {
       HStack(alignment: .top) {
         DisclosureGroup("Details") {
           VStack(alignment: .leading, spacing: 6) {
-            Text("Key \(offer.device.fingerprint) · Secure Enclave, Face ID")
+            Text("Key \(offer.device.fingerprint) · Secure Enclave, Face ID or Touch ID")
             ForEach(SignersFiles.lines(offer.device, scope: pairing.scope), id: \.1) {
               file, line in
               Text(

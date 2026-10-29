@@ -113,7 +113,8 @@ final class PhonePairing {
 
   private static func explain(_ error: Error) -> String {
     if let error = error as? LAError {
-      return "Board needs Face ID to prove this iPhone holds its key: \(error.localizedDescription)"
+      return
+        "Board needs \(PhoneKey.biometry.name) to prove this iPhone holds its key: \(error.localizedDescription)"
     }
     if let error = error as? CKError,
       [.notAuthenticated, .accountTemporarilyUnavailable].contains(error.code)

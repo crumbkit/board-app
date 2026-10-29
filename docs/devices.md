@@ -8,7 +8,7 @@
 3. The Mac sends a random nonce of its own. It pins the nonce, the
    commitment, the name and the request time in memory, and checks every
    later read of the request against them.
-4. The phone signs the key and both nonces with Face ID, then reveals the
+4. The phone signs the key and both nonces with Face ID or Touch ID, then reveals the
    key, its nonce and the signature.
 5. The Mac checks the reveal against the commitment and the signature against
    the key. Both screens show six digits from the key and both nonces.
@@ -27,4 +27,4 @@ Pairing the same phone again replaces its lines with the new scope.
 
 Not built in the app. To revoke a phone, delete the line ending in
 `board-app/device/<id>` from both allowed signers files. A lost phone's key
-needs that phone's Face ID, but revoke it anyway.
+needs that phone's Face ID or Touch ID, but revoke it anyway.

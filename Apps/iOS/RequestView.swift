@@ -1,7 +1,7 @@
 // One request: what a plugin asked to do, so the owner can approve it with
-// Face ID or refuse it. It follows the signed-off Request detail design: the
-// changed lines or fields in the compact layout, a two-up diff in the regular
-// layout, and the controls on the lower half in the tabletop pose.
+// Face ID or Touch ID, or refuse it. It follows the signed-off Request detail
+// design: the changed lines or fields in the compact layout, a two-up diff in
+// the regular layout, and the controls on the lower half in the tabletop pose.
 import Requests
 import SwiftUI
 
@@ -53,7 +53,7 @@ struct RequestView: View {
 
   @ToolbarContentBuilder private var toolbar: some ToolbarContent {
     ToolbarItem(placement: .primaryAction) {
-      Button(action: approve) { Label("Approve", systemImage: "faceid") }
+      Button(action: approve) { Label("Approve", systemImage: PhoneKey.biometry.symbol) }
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.capsule)
         .disabled(request.isStale || answering)
@@ -216,7 +216,8 @@ struct RequestView: View {
         )
         .font(.footnote).foregroundStyle(.secondary)
         Button(action: approve) {
-          Label("Approve with Face ID", systemImage: "faceid").frame(maxWidth: .infinity)
+          Label("Approve with \(PhoneKey.biometry.name)", systemImage: PhoneKey.biometry.symbol)
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
         }
         .buttonStyle(.borderedProminent)
@@ -612,7 +613,7 @@ struct LinkRow: View {
   }
 }
 
-/// The exact statement Face ID signs, line for line.
+/// The exact statement Face ID or Touch ID signs, line for line.
 struct WhatYouSign: View {
   let request: Request
   @Environment(\.dismiss) private var dismiss
@@ -626,7 +627,7 @@ struct WhatYouSign: View {
         Button("Close") { dismiss() }.fontWeight(.semibold)
       }
       Text(
-        "Face ID signs exactly these lines. Board on your Mac checks them before \(request.plugin) may \(request.kind == .change || request.kind == .add ? "write" : "act")."
+        "\(PhoneKey.biometry.name) signs exactly these lines. Board on your Mac checks them before \(request.plugin) may \(request.kind == .change || request.kind == .add ? "write" : "act")."
       )
       .font(.footnote).foregroundStyle(.secondary)
       ScrollView {
@@ -662,7 +663,7 @@ struct RefuseSheet: View {
     VStack(alignment: .leading, spacing: 10) {
       Text("Refuse this request?").font(.headline)
       Text(
-        "\(request.plugin) is told no. A refusal is not signed, so it needs no Face ID. If \(request.plugin) asks for the same thing again, it gets the same answer."
+        "\(request.plugin) is told no. A refusal is not signed, so it needs no \(PhoneKey.biometry.name). If \(request.plugin) asks for the same thing again, it gets the same answer."
       )
       .font(.footnote).foregroundStyle(.secondary)
       TextField(

@@ -69,7 +69,7 @@ public enum PairingCode {
 }
 
 /// The phone's proof that it holds the key it revealed: a signature, made with
-/// Face ID, of the pairing's key and both nonces.
+/// Face ID or Touch ID, of the pairing's key and both nonces.
 public enum PairingProof {
   public static func transcript(x963: Data, phoneNonce: Data, macNonce: Data) -> Data {
     Data("board-app/proof/v1".utf8) + x963 + phoneNonce + macNonce

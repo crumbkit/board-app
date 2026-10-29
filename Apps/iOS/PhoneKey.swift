@@ -1,8 +1,9 @@
-// The phone's Secure Enclave key. Signing with it needs Face ID, and the key
-// cannot leave this phone: the stored blob is useless on any other chip.
+// The phone's Secure Enclave key. Signing with it needs Face ID or Touch ID,
+// whichever the device has, and the key cannot leave this phone: the stored blob is useless on any other chip.
 import CryptoKit
 import Foundation
 import LocalAuthentication
+import Requests
 import SSHSig
 
 enum PhoneKey {
@@ -48,7 +49,7 @@ enum PhoneKey {
   }
 
   /// The armored SSH signature of the effect's approval statement, in the
-  /// namespace Board checks it in. It asks for Face ID before the Secure
+  /// namespace Board checks it in. It asks for biometry before the Secure
   /// Enclave signs, so a cancel is LocalAuthentication's own error.
   static func approve(_ effect: Effect) async throws -> String {
     let key = try load()
@@ -63,7 +64,22 @@ enum PhoneKey {
     ) { try signer.signature(for: $0).rawRepresentation }
   }
 
-  /// Whether `error` is the owner or the system cancelling Face ID, which
+  /// The biometry this device signs with, read once from LocalAuthentication.
+  static let biometry: Biometry = {
+    let context = LAContext()
+    _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    switch context.biometryType {
+    case .touchID: return .touchID
+    case .opticID: return .opticID
+    // biometryType is set once canEvaluatePolicy returns, even when it fails
+    // because nothing is enrolled. Only a device without the hardware reports
+    // none; it is named as Face ID, and signing fails with LocalAuthentication's
+    // own message.
+    default: return .faceID
+    }
+  }()
+
+  /// Whether `error` is the owner or the system cancelling biometry, which
   /// needs no message.
   static func isCancel(_ error: Error) -> Bool {
     let error = error as NSError
