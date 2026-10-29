@@ -1,0 +1,44 @@
+# The signing firewall's owners: a literal, a tab, and a path glob that may
+# name it. bin/check-signing holds the list of literals and refuses each one
+# in any file no line here names. docs/signing.md says who owns what and why.
+# SecKey belongs to tests alone: no shipped file makes a software signing key.
+CryptoKit	Sources/SSHSig/*
+CryptoKit	Sources/Pairing/Pairing.swift
+CryptoKit	Sources/attention-sign/main.swift
+CryptoKit	Apps/iOS/PhoneKey.swift
+CryptoKit	Tests/*
+LocalAuthentication	Sources/attention-sign/main.swift
+LocalAuthentication	Apps/iOS/PhoneKey.swift
+LocalAuthentication	Apps/macOS/PairingSheet.swift
+LocalAuthentication	Tests/*
+SecureEnclave	Sources/attention-sign/main.swift
+SecureEnclave	Apps/iOS/PhoneKey.swift
+SecAccessControl	Sources/attention-sign/main.swift
+SecAccessControl	Apps/iOS/PhoneKey.swift
+attention/order/v1	Sources/SSHSig/*
+attention/order/v1	Tests/*
+board/approve/v1	Sources/SSHSig/*
+board/approve/v1	Tests/*
+board/write/v1	Sources/SSHSig/*
+board/write/v1	Tests/*
+attention/directive/v1	Sources/SSHSig/*
+attention/directive/v1	Tests/*
+SSHSIG	Sources/SSHSig/*
+SSHSIG	Tests/*
+BEGIN SSH SIGNATURE	Sources/SSHSig/*
+BEGIN SSH SIGNATURE	Tests/*
+allowed_signers	Sources/SSHSig/AllowedSigners.swift
+allowed_signers	Apps/macOS/SignersFiles.swift
+allowed_signers	bin/setup
+allowed_signers	Tests/*
+ssh-keygen	Sources/SSHSig/*
+ssh-keygen	bin/setup
+ssh-keygen	Tests/*
+attention-sign	Sources/attention-sign/*
+attention-sign	bin/setup
+attention-sign	Tests/*
+attention-sign	Package.swift
+attention-sign	bin/bundle
+attention-sign	Install/install
+attention-sign	Install/test
+SecKey	Tests/*

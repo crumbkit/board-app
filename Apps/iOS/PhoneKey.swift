@@ -49,20 +49,50 @@ enum PhoneKey {
   }
 
   /// The armored SSH signature of the effect's approval statement, in the
-  /// namespace Board checks it in. It asks for biometry before the Secure
-  /// Enclave signs, so a cancel is LocalAuthentication's own error.
+  /// namespace Board checks it in.
   static func approve(_ effect: Effect) async throws -> String {
     let key = try load()
-    let context = LAContext()
-    _ = try await context.evaluateAccessControl(
-      access(), operation: .useKeySign, localizedReason: "approve what you just read")
-    let signer = try SecureEnclave.P256.Signing.PrivateKey(
-      dataRepresentation: key.dataRepresentation, authenticationContext: context)
+    let signer = try await unlocked(key, reason: "approve what you just read")
     return try sign(
       message: Data(effect.approval.utf8), x963: key.publicKey.x963Representation,
       namespace: Approval.effect.namespace
     ) { try signer.signature(for: $0).rawRepresentation }
   }
+
+  /// The key's public half, as the X9.63 bytes pairing reveals.
+  static func publicKey() throws -> Data { try load().publicKey.x963Representation }
+
+  /// The raw r‖s signature of a pairing transcript, which proves to the Mac
+  /// that this phone holds the key it revealed as `x963`. It throws when the
+  /// key changed since then, since the Mac would refuse a proof by another key.
+  static func proof(for transcript: Data, revealed x963: Data) async throws -> Data {
+    let key = try load()
+    guard key.publicKey.x963Representation == x963 else { throw KeyChanged() }
+    let signer = try await unlocked(key, reason: "prove this iPhone holds its new Board key")
+    return try signer.signature(for: transcript).rawRepresentation
+  }
+
+  struct KeyChanged: LocalizedError {
+    var errorDescription: String? { "This iPhone's key changed while it paired. Pair again." }
+  }
+
+  /// `key` with the owner's biometry checked, so it signs without asking
+  /// again. A cancel is LocalAuthentication's own error.
+  private static func unlocked(_ key: SecureEnclave.P256.Signing.PrivateKey, reason: String)
+    async throws -> SecureEnclave.P256.Signing.PrivateKey
+  {
+    let context = LAContext()
+    _ = try await context.evaluateAccessControl(
+      access(), operation: .useKeySign, localizedReason: reason)
+    return try SecureEnclave.P256.Signing.PrivateKey(
+      dataRepresentation: key.dataRepresentation, authenticationContext: context)
+  }
+
+  /// Whether this device has a Secure Enclave to hold the key.
+  static var isAvailable: Bool { SecureEnclave.isAvailable }
+
+  /// Whether `error` came from the biometry check.
+  static func isBiometryError(_ error: Error) -> Bool { error is LAError }
 
   /// The biometry this device signs with, read once from LocalAuthentication.
   static let biometry: Biometry = {

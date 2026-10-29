@@ -9,9 +9,9 @@ public struct Scope: OptionSet, Codable, Hashable, Sendable {
   public let rawValue: Int
   public init(rawValue: Int) { self.rawValue = rawValue }
 
-  /// Pending effects a plugin asked for, signed in `board/approve/v1`.
+  /// Pending effects a plugin asked for, signed in the approval namespace.
   public static let approvals = Scope(rawValue: 1 << 0)
-  /// Orders, signed in `attention/order/v1`.
+  /// Orders, signed in the order namespace.
   public static let orders = Scope(rawValue: 1 << 1)
 
   /// What the pairing sheet ticks before the owner changes anything.
@@ -34,7 +34,7 @@ public struct Device: Equatable, Sendable {
   /// later pairing finds and replaces that line alone.
   public var label: String { "board-app/device/\(id)" }
 
-  /// `SHA256:…`, as `ssh-keygen -l` prints it.
+  /// `SHA256:…`, as OpenSSH prints a fingerprint.
   public var fingerprint: String { Device.fingerprint(x963: x963) }
 
   public static func fingerprint(x963: Data) -> String {
@@ -152,36 +152,23 @@ public struct Reveal: Sendable {
   }
 }
 
-/// Lines of the two allowed signers files: `~/.config/board/allowed_signers`
-/// for Board and `~/.config/attention/allowed_signers` for attention.
-public enum AllowedSigners {
+/// A paired device's lines, built by `SSHSig`'s `AllowedSigners` from the
+/// device's key and label and the scope the owner chose.
+extension AllowedSigners {
   /// The device's line for Board's file, or nil when it may sign nothing there.
-  /// A device never gets `board/write/v1`; only the Mac's key signs the owner's
-  /// own writes.
   public static func boardLine(_ device: Device, scope: Scope) -> String? {
-    line(device, scope.contains(.approvals) ? [approvalNamespace] : [])
+    deviceBoardLine(x963: device.x963, label: device.label, approves: scope.contains(.approvals))
   }
 
   /// The device's line for attention's file, or nil when it may not sign orders.
   public static func attentionLine(_ device: Device, scope: Scope) -> String? {
-    line(device, scope.contains(.orders) ? [orderNamespace] : [])
+    deviceAttentionLine(
+      x963: device.x963, label: device.label, signsOrders: scope.contains(.orders))
   }
 
-  /// `text` with the line that ends in the device's label removed, and `line`
-  /// appended when it is not nil. Every other line stays as it was.
+  /// `text` with the device's line replaced by `line`, or removed when it is nil.
   public static func replacing(_ id: String, in text: String, with line: String?) -> String {
-    let label = Device(id: id, name: "", x963: Data()).label
-    var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-    if lines.last == "" { lines.removeLast() }
-    lines.removeAll { $0.hasSuffix(" " + label) }
-    if let line { lines.append(line) }
-    return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
-  }
-
-  private static func line(_ device: Device, _ namespaces: [String]) -> String? {
-    guard !namespaces.isEmpty else { return nil }
-    let key = openSSHPublicKey(x963: device.x963, comment: device.label)
-    return "owner namespaces=\"\(namespaces.joined(separator: ","))\" \(key)"
+    replacing(label: Device(id: id, name: "", x963: Data()).label, in: text, with: line)
   }
 }
 

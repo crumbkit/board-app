@@ -17,5 +17,6 @@ let package = Package(
     .testTarget(name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")]),
     .testTarget(name: "PairingTests", dependencies: ["Pairing", "SSHSig"]),
     .testTarget(name: "RequestsTests", dependencies: ["Requests", "SSHSig"]),
+    .testTarget(name: "GatesTests"),
   ]
 )

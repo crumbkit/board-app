@@ -2,6 +2,7 @@
 // line, the Mac's own key among them, stays as it was.
 import Foundation
 import Pairing
+import SSHSig
 
 enum SignersFiles {
   static let board = home(".config/board/allowed_signers")

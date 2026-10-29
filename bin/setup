@@ -301,8 +301,11 @@ elif [ -e "$board_signers" ] && [ ! -r "$board_signers" ]; then
 elif ! mac_key=$(attention-sign key) || [ -z "$mac_key" ]; then
   warn "attention-sign could not print this Mac's key."
   SKIPPED+=("add this Mac's key to $board_signers: attention-sign key failed")
+elif ! mac_line=$(attention-sign line) || [ -z "$mac_line" ]; then
+  warn "attention-sign could not print this Mac's line. One older than this checkout has no line command."
+  SKIPPED+=("add this Mac's key to $board_signers: update attention-sign, then run bin/setup again")
 else
-  mac_line="owner namespaces=\"board/approve/v1,board/write/v1\" $mac_key"
+  # attention-sign builds the line, so the namespaces live only in its code.
   say "Board checks approvals, your own writes under effects/ and your removal of .board/board.json against $board_signers."
   say "This Mac's Touch ID key needs this line there (the key is cut short here):"
   note "${mac_line:0:90}…"

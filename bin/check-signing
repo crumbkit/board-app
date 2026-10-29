@@ -1,0 +1,54 @@
+#!/bin/sh
+# The signing firewall. It looks for each literal below in every file of the
+# tree, following symlinks, except the git and build directories, the docs,
+# Markdown files, the vendored vectors, signing-owners.txt and this script.
+# A file that contains a literal fails the check unless a line of
+# signing-owners.txt names that literal, a tab, and a path glob the file's
+# path matches. A literal with no owner line may appear nowhere.
+#
+#   bin/check-signing [root]   check root, by default this checkout
+set -euf
+repo=$(cd "$(dirname "$0")/.." && pwd)
+owners="$repo/signing-owners.txt"
+cd "${1:-$repo}"
+# An absolute root, since the hidden-directory exclusion would match ".".
+root=$(pwd)
+tab=$(printf '\t')
+literals='CryptoKit
+LocalAuthentication
+SecureEnclave
+SecAccessControl
+SecKey
+attention/order/v1
+board/approve/v1
+board/write/v1
+attention/directive/v1
+SSHSIG
+BEGIN SSH SIGNATURE
+allowed_signers
+ssh-keygen
+attention-sign'
+failed=$(echo "$literals" | while IFS= read -r literal; do
+  globs=$(awk -F"$tab" -v l="$literal" '$1 == l { print $2 }' "$owners")
+  # -S follows symlinks. A file grep cannot read is a failure, not a pass.
+  files=$(grep -rlFS --exclude-dir='.*' --exclude-dir=.build --exclude-dir=Board.xcodeproj \
+    --exclude-dir=docs --exclude-dir=vectors --exclude='*.md' -- "$literal" "$root" 2>&1) \
+    || [ $? -eq 1 ] || { echo "signing: grep failed: $files" >&2; echo fail; continue; }
+  echo "$files" | while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    file=${file#"$root"/}
+    case "$file" in (signing-owners.txt | bin/check-signing) continue ;; esac
+    owned=no
+    for glob in $globs; do
+      case "$file" in ($glob) owned=yes ;; esac
+    done
+    if [ "$owned" = no ]; then
+      line=$(grep -naF -m1 -- "$literal" "$file" | cut -d: -f1)
+      may=$(echo $globs)
+      if [ -n "$may" ]; then may="only $may may"; else may="no file may"; fi
+      echo "signing: $file:$line names $literal, which $may" >&2
+      echo fail
+    fi
+  done
+done)
+[ -z "$failed" ]

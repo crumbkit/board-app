@@ -1,5 +1,5 @@
 #!/bin/sh
-# The tests drive ssh-keygen to check the signatures the helper writes.
+# The tests drive OpenSSH to check the signatures the helper writes.
 set -eu
 cd "$(dirname "$0")/.."
 swift test

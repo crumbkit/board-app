@@ -2,6 +2,7 @@
 // bytes with a Secure Enclave key, which asks for Touch ID on every signature.
 //
 //   attention-sign key               print the public key, making it on first use
+//   attention-sign line              print this Mac's line for Board's allowed signers file
 //   attention-sign sign <statement>  show the statement, sign it, print the signature
 //   attention-sign approve <statement>  the same for a Board approval, in the namespace its first line names
 //
@@ -48,6 +49,9 @@ MainActor.assumeIsolated {
     case "key":
       let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
       print(openSSHPublicKey(x963: key.publicKey.x963Representation, comment: "attention"))
+    case "line":
+      let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
+      print(AllowedSigners.macLine(x963: key.publicKey.x963Representation, comment: "attention"))
     case let command where (command == "sign" || command == "approve") && arguments.count == 2:
       let message = try Data(contentsOf: URL(fileURLWithPath: arguments.last!))
       guard let statement = String(data: message, encoding: .utf8) else {
@@ -58,7 +62,7 @@ MainActor.assumeIsolated {
       let approval = Approval(statement: statement)
       if command == "approve" && approval == nil {
         fail(
-          "the statement is not a Board approval: its first line is not board/approve/v1 or board/write/v1"
+          "the statement is not a Board approval: its first line names no approval namespace"
         )
       }
       if command == "sign" && approval != nil {
@@ -84,7 +88,7 @@ MainActor.assumeIsolated {
       print(armor, terminator: "")
     default:
       fail(
-        "usage: attention-sign key | attention-sign sign <statement-file> | attention-sign approve <statement-file>"
+        "usage: attention-sign key | attention-sign line | attention-sign sign <statement-file> | attention-sign approve <statement-file>"
       )
     }
   } catch {

@@ -3,17 +3,20 @@
 import CryptoKit
 import Foundation
 
+// The namespaces have package access: the apps reach one only through
+// `Approval.namespace` or an `AllowedSigners` line, never by name.
+
 /// The namespace every order signature carries. A signature made for another
 /// namespace, such as git's, does not verify as an order.
-public let orderNamespace = "attention/order/v1"
+package let orderNamespace = "attention/order/v1"
 
 /// The namespace of a Board approval, so an approval and an order never
 /// verify as each other.
-public let approvalNamespace = "board/approve/v1"
+package let approvalNamespace = "board/approve/v1"
 
 /// The namespace of the owner's own write under `effects/`, so an approvals
 /// key that may not make one cannot sign one.
-public let writeNamespace = "board/write/v1"
+package let writeNamespace = "board/write/v1"
 
 /// What a Board statement asks the owner to approve, named by its first line.
 public enum Approval: Equatable, Sendable {

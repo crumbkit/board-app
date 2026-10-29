@@ -3,10 +3,12 @@
 ## Swift package
 
 - `SSHSig`: SSH signatures (`ssh-keygen -Y` format) for a P-256 key,
-  parsing of the statements the owner signs, and the approval statement of
-  a Board pending effect, with the JSON form Board prints.
-- `Pairing`: the pairing code, scopes, and allowed signers lines. Pure
-  logic, shared by both apps, tested with `ssh-keygen`.
+  parsing of the statements the owner signs, the approval statement of a
+  Board pending effect, with the JSON form Board prints, and the text of an
+  allowed signers line. It owns the bytes of every SSH signature
+  ([signing](signing.md)).
+- `Pairing`: the pairing code, scopes, and the writer of the allowed
+  signers files. Pure logic, shared by both apps, tested with `ssh-keygen`.
 - `Requests`: how the phone words a pending effect, orders the inbox,
   counts each board, and diffs a put line by line or field by field. Pure
   logic.
@@ -26,6 +28,7 @@
 ## Scripts
 
 - `bin/lint`, `bin/test`: the package's gates. CI runs them on macOS.
+  `bin/lint` first runs `bin/check-signing`, the signing firewall.
 - `bin/project`: generates `Board.xcodeproj` from `project.yml` with
   XcodeGen. The project is not committed.
 - `bin/install-phone`, `bin/install-mac`: build, sign and install an app.

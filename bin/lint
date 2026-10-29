@@ -1,6 +1,7 @@
 #!/bin/sh
-# The format and build gates. Warnings fail the build.
+# The signing firewall, format and build gates. Warnings fail the build.
 set -eu
 cd "$(dirname "$0")/.."
+bin/check-signing
 swift format lint --strict -r Sources Tests Apps Package.swift
 swift build -Xswiftc -warnings-as-errors

@@ -1,9 +1,7 @@
 // Pairing on the phone: "Check the code" while the Mac decides, then
 // "You're set". Both screens follow the signed-off pairing design.
 import CloudKit
-import CryptoKit
 import Foundation
-import LocalAuthentication
 import Pairing
 import SwiftUI
 import UIKit
@@ -39,9 +37,8 @@ final class PhonePairing {
   private func attempt() async -> Ending {
     phase = .connecting
     do {
-      let key = try PhoneKey.load()
+      let x963 = try PhoneKey.publicKey()
       try await cloud.prepare()
-      let x963 = key.publicKey.x963Representation
       let phoneNonce = randomNonce()
       var request = PairingRequest(
         id: PhoneKey.deviceID, name: UIDevice.current.name,
@@ -50,13 +47,9 @@ final class PhonePairing {
       self.request = request
       let challenge = await poll(request) { try await $0.challenge(for: request.id) }
       guard case .found(let macNonce) = challenge else { return challenge.ending }
-      let context = LAContext()
-      context.localizedReason = "prove this iPhone holds its new Board key"
-      let signer = try SecureEnclave.P256.Signing.PrivateKey(
-        dataRepresentation: key.dataRepresentation, authenticationContext: context)
-      request.proof = try signer.signature(
-        for: PairingProof.transcript(x963: x963, phoneNonce: phoneNonce, macNonce: macNonce)
-      ).rawRepresentation
+      request.proof = try await PhoneKey.proof(
+        for: PairingProof.transcript(x963: x963, phoneNonce: phoneNonce, macNonce: macNonce),
+        revealed: x963)
       request.x963 = x963
       request.phoneNonce = phoneNonce
       guard isCurrent(request) else { return .finished }
@@ -112,7 +105,7 @@ final class PhonePairing {
   }
 
   private static func explain(_ error: Error) -> String {
-    if let error = error as? LAError {
+    if PhoneKey.isBiometryError(error) {
       return
         "Board needs \(PhoneKey.biometry.name) to prove this iPhone holds its key: \(error.localizedDescription)"
     }
@@ -121,7 +114,7 @@ final class PhonePairing {
     {
       return "Sign in to iCloud in Settings, with the account your Mac uses, then open Board again."
     }
-    if !SecureEnclave.isAvailable {
+    if !PhoneKey.isAvailable {
       return "This device has no Secure Enclave, so it cannot hold a Board key."
     }
     return "Board could not reach your Mac: \(error.localizedDescription)"
