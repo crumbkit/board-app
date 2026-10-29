@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Installs a bundle into a scratch home and checks what install changed.
+#
+#   Install/test [bundle]      bundle defaults to Bundle/board; run bin/bundle first
+#
+# It runs this checkout's Install/install on a copy of the bundle, so an edit
+# to the installer is tested without bundling again.
+# It uses the real uv cache and git config, because attention fetches
+# board-plugin from GitHub. claude is a stub that logs its arguments. This
+# proves the installer's links, binaries, refusals and plugin enabling; it
+# does not prove that the real claude accepts the hook commands.
+set -uo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+source=${1:-$repo/Bundle/board}
+[ -f "$source/release.json" ] || { echo "Install/test: no bundle at $source; run bin/bundle first." >&2; exit 1; }
+scratch=$(mktemp -d)
+trap 'rm -rf -- "$scratch"' EXIT
+bundle="$scratch/bundle"
+cp -R "$source" "$bundle"
+cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$bundle/"
+failures=0
+check() {
+  if eval "$2"; then echo "ok: $1"; else echo "FAILED: $1" >&2; failures=$((failures + 1)); fi
+}
+
+mkdir -p "$scratch/stub" "$scratch/.config/board"
+cat >"$scratch/stub/claude" <<'EOF'
+#!/bin/sh
+echo "$*" >>"$HOME/claude.log"
+case "$*" in *"list --json"*) echo '[{"name": "attention"}]' ;; esac
+EOF
+chmod +x "$scratch/stub/claude"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$(uv cache dir)}" GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
+export GH_CONFIG_DIR="${GH_CONFIG_DIR:-$HOME/.config/gh}"
+path="$scratch/.local/bin:$scratch/stub:$(dirname "$(command -v uv)")"
+command -v gh >/dev/null && path="$path:$(dirname "$(command -v gh)")"
+export HOME=$scratch PATH="$path:/usr/bin:/bin:/usr/sbin:/sbin"
+share="$HOME/.local/share/board"
+id=$(plutil -extract id raw -o - "$bundle/release.json")
+git init -q "$HOME/personal" && (cd "$HOME/personal" && board_init=$("$bundle/bin/board" init) && git add -A && git commit -qm init)
+printf '{"boards": ["%s"], "personal": "%s"}\n' "$HOME/personal" "$HOME/personal" >"$HOME/.config/board/config.json"
+
+mkdir -p "$share/plugins/evals"
+"$bundle/install" >/dev/null 2>"$scratch/refused"
+check "a real directory where a link goes stops the install" "[ \$? -ne 0 ] && grep -q 'is not a link' '$scratch/refused'"
+check "and is left as it is" "[ -d '$share/plugins/evals' ] && [ ! -L '$share/plugins/evals' ]"
+check "and nothing else was changed" "[ ! -e '$share/current' ] && [ ! -e '$share/plugins/attention' ] && [ ! -e '$HOME/.local/bin/board' ]"
+rmdir "$share/plugins/evals"
+
+"$bundle/install" --hooks >"$scratch/out" 2>&1
+check "the same install without it succeeds" "[ \$? -eq 0 ]"
+check "current points at the release" "[ \"\$(readlink '$share/current')\" = 'releases/$id' ]"
+check "each plugin links through current" "[ \"\$(readlink '$share/plugins/evals')\" = '$share/current/plugins/evals' ]"
+check "a plugin with a skill gets a skill link" "[ -L '$HOME/.claude/skills/tasks' ] && [ -f '$HOME/.claude/skills/tasks/SKILL.md' ]"
+check "a plugin without a skill gets none" "[ ! -e '$HOME/.claude/skills/review' ]"
+check "board and attention-sign are installed" "cmp -s '$bundle/bin/board' '$HOME/.local/bin/board' && cmp -s '$bundle/bin/attention-sign' '$HOME/.local/bin/attention-sign'"
+check "every plugin is enabled in the personal board" "[ \$(board -C '$HOME/personal' plugin list --json </dev/null | grep -o '\"enabled\": *true' | wc -l) -eq \$(ls '$share/plugins' | wc -l) ]"
+check "an installed plugin answers a call" "board -C '$HOME/personal' call evals.open </dev/null >/dev/null"
+check "the hooks replace the attention marketplace" "grep -qx 'plugin marketplace remove attention' '$HOME/claude.log' && grep -qx 'plugin install attention-approve@board' '$HOME/claude.log'"
+
+commits=$(git -C "$HOME/personal" rev-list --count HEAD)
+"$bundle/install" >"$scratch/again" 2>&1
+check "a second install succeeds" "[ \$? -eq 0 ] && grep -q 'already copied' '$scratch/again'"
+check "and makes no commit and keeps no .prev" "[ \$(git -C '$HOME/personal' rev-list --count HEAD) -eq $commits ] && [ ! -e '$share/board.prev' ]"
+
+ln -s "$share/current/plugins/gone" "$share/plugins/gone"
+"$bundle/install" >/dev/null 2>&1
+check "a link to a plugin the release no longer ships is removed" "[ ! -L '$share/plugins/gone' ]"
+
+PATH=${PATH#"$HOME/.local/bin:"} "$bundle/install" >/dev/null 2>"$scratch/nopath"
+check "an install with ~/.local/bin off PATH stops and says why" "[ \$? -ne 0 ] && grep -q 'is not on PATH' '$scratch/nopath'"
+
+[ $failures -eq 0 ] && echo "All checks passed." || { echo "$failures checks failed." >&2; exit 1; }

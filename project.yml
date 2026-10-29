@@ -44,7 +44,14 @@ targets:
     type: application
     platform: macOS
     scheme: {}
-    sources: [Apps/Shared, Apps/macOS]
+    sources:
+      - Apps/Shared
+      - Apps/macOS
+      # bin/bundle writes it; a build without it ships no Board release.
+      - path: Bundle/board
+        type: folder
+        optional: true
+        buildPhase: resources
     dependencies:
       - package: board-app
         product: Pairing

@@ -6,3 +6,4 @@ The map. Each doc describes what is built; "Not built" lines say what is not.
 - [Security](docs/security.md): keys, allowed signers, namespaces, what pairing grants.
 - [Sync](docs/sync.md): how the phone and the Mac meet in iCloud.
 - [Devices](docs/devices.md): pairing, revoking and a lost device.
+- [Bundle](docs/bundle.md): the Board release the Mac app carries, and how it installs.

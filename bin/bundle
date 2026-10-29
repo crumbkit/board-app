@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Assembles Bundle/board, which Board-macOS ships in its Resources: the board
+# binary, every Board plugin, attention, attention-sign, the Claude Code hooks,
+# the installer and its instructions.
+#
+#   bin/bundle [board-ref] [attention-ref]
+#
+# Each ref defaults to origin/main of the checkout BOARD_SRC or ATTENTION names,
+# ~/Code/board and ~/Code/board-attention when unset. The checkouts' working
+# trees are only read through git, so their branch and changes do not matter.
+set -euo pipefail
+
+repo=$(cd "$(dirname "$0")/.." && pwd)
+board=${BOARD_SRC:-$HOME/Code/board}
+attention=${ATTENTION:-$HOME/Code/board-attention}
+
+git -C "$board" fetch -q origin
+git -C "$attention" fetch -q origin
+board_commit=$(git -C "$board" rev-parse "${1:-origin/main}^{commit}")
+attention_commit=$(git -C "$attention" rev-parse "${2:-origin/main}^{commit}")
+app_commit=$(git -C "$repo" rev-parse HEAD)
+if [ -n "$(git -C "$repo" status --porcelain -- Sources Install Package.swift Package.resolved)" ]; then
+  echo "bin/bundle: Sources, Install or the package manifest has uncommitted changes, so the bundle would not match $app_commit." >&2
+  exit 1
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+mkdir "$work/board" "$work/attention"
+git -C "$board" archive "$board_commit" | tar -x -C "$work/board"
+git -C "$attention" archive "$attention_commit" | tar -x -C "$work/attention"
+
+echo "Building board at board ${board_commit:0:12}."
+CARGO_TARGET_DIR="$repo/.build/cargo" cargo build --release --locked --quiet \
+  --manifest-path "$work/board/Cargo.toml" -p board-cli
+echo "Building attention-sign at board-app ${app_commit:0:12}."
+(cd "$repo" && swift build -c release --product attention-sign >/dev/null)
+
+stage="$work/board"
+mkdir -p "$stage/bin" "$stage/plugins" "$stage/.claude-plugin"
+cp "$repo/.build/cargo/release/board" "$repo/.build/release/attention-sign" "$stage/bin/"
+# board's plugins reach board-plugin at ../../python/board-plugin.
+rsync -a --exclude tests/ --exclude .venv/ "$work/board/python/" "$stage/python/"
+for plugin in "$work"/board/plugins/*/; do
+  rsync -a --exclude tests/ --exclude .venv/ "$plugin" "$stage/plugins/$(basename "$plugin")/"
+done
+rsync -a --exclude tests/ --exclude .venv/ --exclude /.github/ --exclude /.claude/ \
+  --exclude /.claude-plugin/ "$work/attention/" "$stage/plugins/attention/"
+cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$stage/"
+
+# One marketplace for every Claude Code plugin in the bundle: board's entries
+# point under plugins/<name>/, attention's at plugins/attention/claude-code.
+jq --arg attention "./plugins/attention/claude-code" '
+  .plugins += [{name: "attention-approve", source: $attention}]
+  | .description = "Claude Code hooks of Board and its plugins, from Board.app."
+' "$work/board/.claude-plugin/marketplace.json" >"$stage/.claude-plugin/marketplace.json"
+# Claude Code caches an installed plugin by its version, so each release
+# gives every hook plugin a version of its own, or an update keeps old hooks.
+release_tag="${board_commit:0:12}.${attention_commit:0:12}"
+jq -r '.plugins[].source' "$stage/.claude-plugin/marketplace.json" | while read -r source; do
+  manifest="$stage/$source/.claude-plugin/plugin.json"
+  [ -f "$manifest" ] || {
+    echo "bin/bundle: the marketplace names $source, which has no .claude-plugin/plugin.json." >&2
+    exit 1
+  }
+  jq --arg tag "$release_tag" '.version = "\(.version)+\($tag)"' "$manifest" >"$manifest.new"
+  mv "$manifest.new" "$manifest"
+  claude plugin validate "$stage/$source" >/dev/null
+done
+claude plugin validate "$stage" >/dev/null
+
+jq -n --arg board "$board_commit" --arg attention "$attention_commit" --arg app "$app_commit" '{
+  id: "board-\($board[0:12]).attention-\($attention[0:12]).app-\($app[0:12])",
+  board: $board, attention: $attention, "board-app": $app
+}' >"$stage/release.json"
+
+mkdir -p "$repo/Bundle"
+rm -rf -- "$repo/Bundle/board"
+mv "$stage" "$repo/Bundle/board"
+echo "Wrote Bundle/board, release $(jq -r .id "$repo/Bundle/board/release.json")."

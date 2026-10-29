@@ -15,10 +15,9 @@ update the doc it changes.
 
 ## What comes next
 
-The phone will show pending requests and approve them with Face ID. Board.app
-will carry the `board` binary, every Board plugin at its latest
-version, their skills and hooks, and a skill that installs or updates them
-on a Mac. None of that is built yet.
+The phone will show pending requests and approve them with Face ID. That is
+not built yet. The Mac app already carries a Board release; see
+docs/bundle.md.
 
 ## Gates
 

@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# Installs the Board release this directory holds. INSTALL.md says what it
+# changes and when to run it.
+#
+#   install            the binaries, plugins, skills and plugin schemas
+#   install --hooks    also the Claude Code hooks; ask the owner first
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+share="$HOME/.local/share/board"
+bin="$HOME/.local/bin"
+skills="$HOME/.claude/skills"
+config="$HOME/.config/board/config.json"
+hooks=false
+case "${1:-}" in
+  "") ;;
+  --hooks) hooks=true ;;
+  *)
+    echo "install: unknown argument $1; run install or install --hooks." >&2
+    exit 2
+    ;;
+esac
+
+command -v uv >/dev/null || {
+  echo "install: uv is not on PATH, and every plugin runs through it. Install uv, then run install again." >&2
+  exit 1
+}
+case ":$PATH:" in
+  *":$bin:"*) ;;
+  *)
+    echo "install: $bin is not on PATH, so the board it installs would not run. Add it to PATH, then run install again." >&2
+    exit 1
+    ;;
+esac
+id=$(plutil -extract id raw -o - "$here/release.json")
+release="$share/releases/$id"
+
+# The plugins this release ships, and the links each one gets.
+plugins=()
+links=("$share/current")
+for plugin in "$here"/plugins/*/; do
+  [ -f "$plugin/plugin.json" ] || continue
+  name=$(basename "$plugin")
+  plugins+=("$name")
+  links+=("$share/plugins/$name")
+  if [ -f "$plugin/SKILL.md" ]; then links+=("$skills/$name"); fi
+done
+
+# A link may be replaced; anything else stays. Check every one before
+# changing anything, so a refusal leaves the old install whole.
+for path in "${links[@]}"; do
+  if [ -e "$path" ] && [ ! -L "$path" ]; then
+    echo "install: $path is not a link, so nothing was changed. Move it aside, then run install again." >&2
+    exit 1
+  fi
+done
+
+# 1. Copy the release once. Only uv sync writes in it afterwards, each
+# plugin's .venv.
+mkdir -p "$share/releases" "$share/plugins" "$bin" "$skills"
+if [ ! -d "$release" ]; then
+  partial="$share/releases/.partial-$id"
+  rm -rf -- "$partial"
+  cp -R "$here" "$partial"
+  mv "$partial" "$release"
+  echo "Copied release $id."
+else
+  echo "Release $id is already copied."
+fi
+
+# 2. Give each plugin its environment before anything points at it.
+for plugin in "$release"/plugins/*/; do
+  [ -f "$plugin/pyproject.toml" ] || continue
+  (cd "$plugin" && uv sync --frozen --no-dev --quiet)
+done
+
+# 3. Switch plugins and skills. Their links go through current, so this one
+# link moves them all.
+ln -sfn "releases/$id" "$share/current"
+for name in "${plugins[@]}"; do
+  ln -sfn "$share/current/plugins/$name" "$share/plugins/$name"
+  if [ -f "$release/plugins/$name/SKILL.md" ]; then
+    ln -sfn "$share/current/plugins/$name" "$skills/$name"
+  fi
+done
+# A link into current for a plugin this release no longer ships would dangle.
+for path in "$share"/plugins/* "$skills"/*; do
+  [ -L "$path" ] || continue
+  case "$(readlink "$path")" in
+    "$share/current/plugins/"*) [ -e "$path" ] || { rm -- "$path" && echo "Removed $path, which this release does not ship."; } ;;
+  esac
+done
+echo "Linked plugins: ${plugins[*]}."
+
+# 4. Replace the binaries, keeping each old one as <name>.prev beside the board data.
+for name in board attention-sign; do
+  if [ -f "$bin/$name" ] && ! cmp -s "$bin/$name" "$release/bin/$name"; then
+    cp -p "$bin/$name" "$share/$name.prev"
+  fi
+  install -m 755 "$release/bin/$name" "$bin/.$name.new"
+  mv -f "$bin/.$name.new" "$bin/$name"
+done
+echo "Installed board and attention-sign in $bin."
+
+# 5. Enable every plugin in the personal board, and refresh the schemas of
+# the plugins each other known board enables. Each change is a commit.
+if [ -f "$config" ]; then
+  pairs=$(uv run --no-project --quiet python3 - "$config" "${plugins[@]}" <<'EOF'
+import json, pathlib, sys
+config = json.loads(pathlib.Path(sys.argv[1]).read_text())
+bundled = sys.argv[2:]
+personal = config.get("personal")
+for board in dict.fromkeys(([personal] if personal else []) + config.get("boards", [])):
+    if board == personal:
+        wanted = bundled
+    else:
+        manifest = pathlib.Path(board, ".board/board.json")
+        enabled = json.loads(manifest.read_text()).get("plugins", []) if manifest.exists() else []
+        wanted = [name for name in bundled if name in enabled]
+    for name in wanted:
+        print(board, name, sep="\t")
+EOF
+  )
+  failed=()
+  while IFS=$'\t' read -r board name; do
+    [ -n "$board" ] || continue
+    if out=$("$bin/board" -C "$board" plugin enable "$name" 2>&1 </dev/null); then
+      sed "s|^|$board: |" <<<"$out"
+    else
+      echo "$out" >&2
+      failed+=("$name in $board")
+    fi
+  done <<<"$pairs"
+  if [ ${#failed[@]} -gt 0 ]; then
+    echo "install: these plugins were not enabled: ${failed[*]}. Fix what each error says, then run install again." >&2
+    exit 1
+  fi
+else
+  echo "No $config, so no board's plugins were enabled."
+fi
+
+# 6. The Claude Code hooks, from one marketplace named board at
+# $share/current. It is added again each time, so it never follows another
+# source of the same name. The new plugins go in before the old attention
+# marketplace goes out.
+if $hooks; then
+  hooked=()
+  while read -r name; do hooked+=("$name"); done < <(uv run --no-project --quiet python3 -c '
+import json, sys
+for plugin in json.load(open(sys.argv[1]))["plugins"]:
+    print(plugin["name"])
+' "$release/.claude-plugin/marketplace.json")
+  marketplaces=$(claude plugin marketplace list --json </dev/null)
+  if grep -q '"name": "board"' <<<"$marketplaces"; then
+    claude plugin marketplace remove board </dev/null
+  fi
+  claude plugin marketplace add "$share/current" </dev/null
+  for name in "${hooked[@]}"; do
+    claude plugin install "$name@board" </dev/null
+    claude plugin update "$name@board" </dev/null
+  done
+  if grep -q '"name": "attention"' <<<"$marketplaces"; then
+    claude plugin uninstall attention-approve@attention </dev/null || true
+    claude plugin marketplace remove attention </dev/null
+  fi
+  echo "Installed the Claude Code hooks. They load in sessions started from now on."
+fi
+
+first=$(command -v board)
+if [ "$first" != "$bin/board" ]; then
+  echo "install: $first comes before $bin/board on PATH, so the old board still runs. Remove it, or put $bin first." >&2
+  exit 1
+fi
+echo "Board release $id is installed."
