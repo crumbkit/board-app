@@ -1,0 +1,7 @@
+#!/bin/sh
+# Checks Apps/Shared/AppIcon.icon against Icon Composer's schema and checks
+# that every layer it names has a file. uv fetches jsonschema 4.26.0 on first use.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../../.." && pwd)
+exec uv run --quiet --no-project --with jsonschema==4.26.0 python3 "$here/validate_icon.py" "${1:-$repo/Apps/Shared/AppIcon.icon}"

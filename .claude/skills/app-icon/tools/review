@@ -1,0 +1,37 @@
+#!/bin/zsh
+# Renders Apps/Shared/AppIcon.icon with Icon Composer's ictool into one
+# contact sheet per platform: Default, Dark, TintedDark and ClearLight at
+# 256 pt @2x, Default at 32 pt @2x, then Default at 16 px (16 pt @1x).
+#   tools/review [out-directory]     default: a new temporary directory
+set -euo pipefail
+here=${0:A:h}
+repo=${here:h:h:h:h}
+icon="$repo/Apps/Shared/AppIcon.icon"
+out=${1:-$(mktemp -d)}
+mkdir -p "$out"
+ictool="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
+if [[ ! -x "$ictool" ]]; then
+  if [[ $(xcode-select -p) == */CommandLineTools ]]; then
+    echo "tools/review: xcode-select points at the Command Line Tools, which have no ictool. Xcode may be installed but not selected; run: sudo xcode-select -s /Applications/Xcode.app" >&2
+  else
+    echo "tools/review: ictool not found at $ictool; install Xcode 26 or later" >&2
+  fi
+  exit 1
+fi
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+render() { # platform rendition points scale file
+  "$ictool" "$icon" --export-image --output-file "$work/$5" \
+    --platform "$1" --rendition "$2" --width "$3" --height "$3" --scale "$4" >/dev/null
+}
+for platform in macOS iOS; do
+  render $platform Default 256 2 1.png
+  render $platform Dark 256 2 2.png
+  render $platform TintedDark 256 2 3.png
+  render $platform ClearLight 256 2 4.png
+  render $platform Default 32 2 5.png
+  render $platform Default 16 1 6.png
+  swift "$here/icon_sheet.swift" "$out/AppIcon-$platform.png" "$work"/{1,2,3,4,5,6}.png
+  echo "wrote $out/AppIcon-$platform.png"
+done
