@@ -1,0 +1,14 @@
+board/approve/v1
+effect: 4c7bb2a0a098854e9cbc8e5096c86aba5358a7c8ccb0748577bc8b3124eee372
+plugin: notes
+op: put
+path: /notes/odd\u{200b}name.md
+board: /Users/ana/Code/board
+content: 159 bytes in 7 lines
+---
+$type: "notes/note/v1"
+title: "Crlf\tand \u{202e}hidden\u{202c} text"
+---\r
+line with a tab\there\r
+emoji 👋🏽 and zwj 👩‍💻
+last line without newline \u{2028} sep

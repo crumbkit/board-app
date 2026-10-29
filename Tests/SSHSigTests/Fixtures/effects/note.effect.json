@@ -1,0 +1,9 @@
+{
+  "$type": "board/effect/v1",
+  "board": "/Users/ana/Code/board",
+  "plugin": "notes",
+  "op": "put",
+  "path": "/notes/odd​name.md",
+  "digest": "sha256:2c1d33965d5a407f531fa98725afc653d83bf4e54605ad7a62642e98f2875abc",
+  "text": "---\n$type: \"notes/note/v1\"\ntitle: \"Crlf\\tand ‮hidden‬ text\"\n---\r\nline with a tab\there\r\nemoji 👋🏽 and zwj 👩‍💻\nlast line without newline   sep"
+}

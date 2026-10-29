@@ -1,0 +1,32 @@
+board/approve/v1
+effect: e4fc1b22a6fd6eb2158c379de4aaac08f8efa3533e78400acac86a4b6d28f5d4
+plugin: controls
+op: put
+path: /controls/board-app/docs-map-budget
+board: /Users/ana/Code/board
+content: 599 bytes in 25 lines
+{
+  "$type": "controls/control/v1",
+  "Zebra": 1,
+  "apple": 2,
+  "éclair": 4,
+  "paths": [
+    "repos/board-app/DOCS.md"
+  ],
+  "purpose": "An agent reads the map first.",
+  "quirks": "quote \" backslash \\ tab \t newline \n bell \u0007 del \u{7f} rlo \u{202e} zwsp \u{200b} nbsp   é é 😀 zwj ‍",
+  "requirement": "DOCS.md holds at most 450 words: one line per child doc saying what it covers.",
+  "rule": {
+    "budget": "words",
+    "empty": [],
+    "huge": 1e+20,
+    "max": 450,
+    "neg": -3,
+    "none": {},
+    "off": null,
+    "on": true,
+    "ratio": 1.5,
+    "tiny": 1e-7
+  },
+  "éclair": 3
+}

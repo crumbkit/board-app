@@ -42,7 +42,13 @@
   names: `board/approve/v1` for a pending effect, `board/write/v1` for the owner's
   own write.
 
+- The phone signs the statement `Effect.approval` builds from the effect
+  it shows. Tests pin it to board's `Effect::approval`. Board verifies;
+  the Mac only relays.
+
 ## Known gaps
 
 - Any program running as the owner can edit the allowed signers files.
   Only the sandbox an agent runs in stops that.
+- Whoever can write the owner's iCloud zone can refuse a request, but not
+  approve one.

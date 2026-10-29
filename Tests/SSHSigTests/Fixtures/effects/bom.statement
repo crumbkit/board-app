@@ -1,0 +1,9 @@
+board/approve/v1
+effect: fdabb6b5076102aa6838f0ea38fcb856d42287f1a1ec0cf3d92701613cbedae8
+plugin: p
+op: put
+path: /\u{feff}bom
+board: /b
+content: 39 bytes in 2 lines
+\u{feff}starts with a BOM
+\u{feff}after an escape

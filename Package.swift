@@ -12,7 +12,7 @@ let package = Package(
     .target(name: "SSHSig"),
     .target(name: "Pairing", dependencies: ["SSHSig"]),
     .executableTarget(name: "attention-sign", dependencies: ["SSHSig"]),
-    .testTarget(name: "SSHSigTests", dependencies: ["SSHSig"]),
+    .testTarget(name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")]),
     .testTarget(name: "PairingTests", dependencies: ["Pairing", "SSHSig"]),
   ]
 )

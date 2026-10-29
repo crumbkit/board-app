@@ -1,0 +1,6 @@
+board/approve/v1
+effect: e6abe43e6e54eba8355dc8d4e730d6218599a498fa9e1b9ee5812c5c9561851c
+plugin: review
+op: review.post
+path: /reviews/fix-sync/report
+board: /Users/ana/Code/board

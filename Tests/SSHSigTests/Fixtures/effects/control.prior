@@ -1,0 +1,12 @@
+{
+  "$type": "controls/control/v1",
+  "paths": [
+    "repos/board-app/DOCS.md"
+  ],
+  "purpose": "An agent reads the map first.",
+  "requirement": "DOCS.md holds at most 400 words: one line per child doc saying what it covers.",
+  "rule": {
+    "budget": "words",
+    "max": 400
+  }
+}

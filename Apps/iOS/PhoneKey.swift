@@ -3,6 +3,7 @@
 import CryptoKit
 import Foundation
 import LocalAuthentication
+import SSHSig
 
 enum PhoneKey {
   private static var file: URL {
@@ -39,6 +40,20 @@ enum PhoneKey {
     var excluded = file
     try excluded.setResourceValues(values)
     return key
+  }
+
+  /// The armored SSH signature of the effect's approval statement, in the
+  /// namespace Board checks it in. The Secure Enclave asks for Face ID.
+  static func approve(_ effect: Effect) throws -> String {
+    let key = try load()
+    let context = LAContext()
+    context.localizedReason = "approve what you just read"
+    let signer = try SecureEnclave.P256.Signing.PrivateKey(
+      dataRepresentation: key.dataRepresentation, authenticationContext: context)
+    return try sign(
+      message: Data(effect.approval.utf8), x963: key.publicKey.x963Representation,
+      namespace: Approval.effect.namespace
+    ) { try signer.signature(for: $0).rawRepresentation }
   }
 
   /// The id this phone pairs under. It stays the same across pairings, so

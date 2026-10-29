@@ -2,8 +2,9 @@
 
 ## Swift package
 
-- `SSHSig`: SSH signatures (`ssh-keygen -Y` format) for a P-256 key, and
-  parsing of the statements the owner signs.
+- `SSHSig`: SSH signatures (`ssh-keygen -Y` format) for a P-256 key,
+  parsing of the statements the owner signs, and the approval statement of
+  a Board pending effect, with the JSON form Board prints.
 - `Pairing`: the pairing code, scopes, and allowed signers lines. Pure
   logic, shared by both apps, tested with `ssh-keygen`.
 - `attention-sign`: the Mac command that shows a statement and signs it
@@ -12,8 +13,9 @@
 ## Apps
 
 - `Apps/iOS`: the iPhone and iPad app. It pairs with the Mac.
-- `Apps/macOS`: the Mac app. It shows the pairing sheet.
-- `Apps/Shared`: the iCloud store both apps use ([sync](sync.md)).
+- `Apps/macOS`: the Mac app. It shows the pairing sheet and relays pending
+  effects and answers between the personal board and the phone.
+- `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)).
 - Both are named Board, with bundle id `com.stemmacorp.board` and team
   `78HLU526FA`.
 

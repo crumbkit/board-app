@@ -1,0 +1,10 @@
+{
+  "$type": "board/effect/v1",
+  "board": "/Users/ana/Code/board",
+  "plugin": "tasks",
+  "op": "put",
+  "path": "/tasks/write-the-release-notes.md",
+  "digest": "sha256:222ed0b35e5dcfc80a9ff248cbdfc28dd6ad4823be15ed5f3fe658eb83f964c1",
+  "prior": "8ff96cc7b1d00a4fec1ff0797b515f46b72861c5",
+  "text": "---\n$type: \"tasks/task/v2\"\ntitle: \"Write the release notes\"\nstatus: \"open\"\ndefer: \"2026-11-02\"\nreviewed: \"2026-10-29\"\n---\n\nCollect the merged pull requests since the last tag.\nGroup them by app: the Mac app first, then the iPhone app.\n\nKeep each line under 80 characters.\n"
+}

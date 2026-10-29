@@ -17,4 +17,22 @@ need no server and no shared network. Both must use the same Apple Account.
 - A request older than 10 minutes is ignored; the phone then starts again.
 - The phone deletes all three records once it reads its grant.
 
-Not built: requests to approve, push notifications.
+## Requests
+
+Zone `Requests` carries pending effects to the phone and answers back.
+
+- The Mac app reads the committed files under `effects/pending/` in the
+  personal board every 10 seconds while its window is open. It shares each
+  as a `Request` named by the effect id: the effect's bytes and the blob a
+  put replaces, as assets, and the board's git remote, the commit time and
+  the blob at the path now. It deletes requests no longer pending, and stamps `Shared`,
+  named `mac`, with the time.
+- The phone shows a request only when its effect hashes to the record's
+  name, and the old version only when it hashes to the blob the effect names. It writes `Answer`, named `answer-<id>`: approve with the armored
+  signature, or refuse with an optional reason.
+- The Mac runs `board --personal answer <id> approve --signature -` or
+  `refuse --reason=…`, then deletes the answer and the request. When Board
+  refuses the answer, or its request is no longer pending, the Mac deletes the
+  answer alone.
+
+Not built: push notifications.

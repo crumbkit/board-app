@@ -1,0 +1,7 @@
+{
+  "$type": "board/effect/v1",
+  "board": "/Users/ana/Code/board",
+  "plugin": "review",
+  "op": "review.post",
+  "path": "/reviews/fix-sync/report"
+}

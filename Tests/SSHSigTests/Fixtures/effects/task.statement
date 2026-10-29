@@ -1,0 +1,20 @@
+board/approve/v1
+effect: 671565ce1902c3e397748d41fede8ae615dc7d3b349c41ebd7e4be5fa8650a72
+plugin: tasks
+op: put
+path: /tasks/write-the-release-notes.md
+board: /Users/ana/Code/board
+content: 272 bytes in 13 lines
+---
+$type: "tasks/task/v2"
+title: "Write the release notes"
+status: "open"
+defer: "2026-11-02"
+reviewed: "2026-10-29"
+---
+
+Collect the merged pull requests since the last tag.
+Group them by app: the Mac app first, then the iPhone app.
+
+Keep each line under 80 characters.
+

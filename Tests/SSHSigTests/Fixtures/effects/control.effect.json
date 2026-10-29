@@ -1,0 +1,34 @@
+{
+  "$type": "board/effect/v1",
+  "board": "/Users/ana/Code/board",
+  "plugin": "controls",
+  "op": "put",
+  "path": "/controls/board-app/docs-map-budget",
+  "digest": "sha256:EB780B9AC7C1F5893BECD3A062813A058EC88B3314E3E68F54209AB42B5104F7",
+  "prior": "25cf1d34199217d13dbe04f1e0252290358fcc87",
+  "record": {
+    "rule": {
+      "max": 450,
+      "budget": "words",
+      "ratio": 1.5,
+      "tiny": 1e-7,
+      "huge": 1e20,
+      "neg": -3,
+      "on": true,
+      "off": null,
+      "none": {},
+      "empty": []
+    },
+    "requirement": "DOCS.md holds at most 450 words: one line per child doc saying what it covers.",
+    "purpose": "An agent reads the map first.",
+    "paths": [
+      "repos/board-app/DOCS.md"
+    ],
+    "$type": "controls/control/v1",
+    "quirks": "quote \" backslash \\ tab \t newline \n bell \u0007 del  rlo ‮ zwsp ​ nbsp   é é 😀 zwj ‍",
+    "Zebra": 1,
+    "apple": 2,
+    "éclair": 3,
+    "éclair": 4
+  }
+}
