@@ -12,6 +12,8 @@
 - `Requests`: how the phone words a pending effect, orders the inbox,
   counts each board, and diffs a put line by line or field by field. Pure
   logic.
+- `Launcher`: the launcher's contract, screen model, provider runner and
+  config check ([launcher](launcher.md)). Pure logic, with no AppKit.
 - `attention-sign`: the Mac command that shows a statement and signs it
   with Touch ID.
 
@@ -20,7 +22,8 @@
 - `Apps/iOS`: the iPhone and iPad app. It pairs with the Mac; once paired,
   it opens on the inbox, and a request opens on its own screen. A half-folded iPhone Duo shows the tabletop layout.
 - `Apps/macOS`: the Mac app. It shows the pairing sheet and relays pending
-  effects and answers between the personal board and the phone.
+  effects and answers between the personal board and the phone. Its menu
+  bar item and ⌃⌥Space open the launcher.
 - `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)).
 - Both are named Board, with bundle id `com.stemmacorp.board` and team
   `78HLU526FA`.

@@ -41,3 +41,6 @@
   Only the sandbox an agent runs in stops that.
 - Whoever can write the owner's iCloud zone can refuse a request, but not
   approve one.
+- Any program running as the owner can edit `~/.config/board/launcher.json`
+  and so choose what the launcher runs. Board.app refuses the file only
+  when someone else could write it ([launcher safety](launcher-safety.md)).

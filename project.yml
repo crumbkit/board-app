@@ -70,6 +70,8 @@ targets:
         product: SSHSig
       - package: board-app
         product: Requests
+      - package: board-app
+        product: Launcher
     entitlements:
       path: Apps/macOS/Board.entitlements
       properties:

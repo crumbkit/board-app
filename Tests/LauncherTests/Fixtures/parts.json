@@ -1,0 +1,49 @@
+{
+  "kind": "launcher/items/v1",
+  "sections": [
+    {
+      "title": "Evidence",
+      "items": [
+        {
+          "id": "evidence:login-fix/report.md", "type": "evidence", "title": "report.md",
+          "data": {"path": "/tmp/login-fix/report.md", "kind": "Markdown", "size": 2048,
+                   "added": "2026-10-29T10:00:00Z", "task_record": "tasks/login-fix.md",
+                   "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+        },
+        {
+          "id": "evidence:login-fix/screen.png", "type": "evidence", "title": "screen.png",
+          "data": {"path": "/tmp/login-fix/screen.png", "kind": "PNG image", "size": 120000,
+                   "added": "2026-10-29T11:30:00Z",
+                   "sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}
+        },
+        {
+          "id": "evidence:login-fix/run.log", "type": "evidence", "title": "run.log",
+          "data": {"path": "/tmp/login-fix/run.log", "kind": "Log", "size": 512,
+                   "added": "2026-10-30T08:00:00Z", "task_record": "tasks/login-fix.md",
+                   "sha256": "aaaabbbbccccddddeeeeffff00001111aaaabbbbccccddddeeeeffff00001111"}
+        }
+      ]
+    },
+    {
+      "title": "Test runs",
+      "items": [
+        {
+          "id": "test:login-fix/1", "type": "test-run", "title": "web tests",
+          "status": {"tone": "good", "word": "Passed"},
+          "data": {"passed": true, "command": "web test", "finished": "2026-10-30T08:10:00Z", "seconds": 42.5, "summary": "120 passed"}
+        }
+      ]
+    },
+    {
+      "title": "Commits",
+      "items": [
+        {
+          "id": "commit:abc1234", "type": "commit", "title": "Sign-in redirects back to the page you asked for",
+          "data": {"sha": "abc1234def5678", "subject": "Sign-in redirects back to the page you asked for",
+                   "author": "Sam", "date": "2026-10-30T07:00:00Z",
+                   "link": {"href": "https://github.com/example/web/commit/abc1234", "reach": "public"}}
+        }
+      ]
+    }
+  ]
+}

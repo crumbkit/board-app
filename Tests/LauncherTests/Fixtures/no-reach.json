@@ -1,0 +1,3 @@
+{"kind": "launcher/items/v1", "sections": [{"title": "Running", "items": [{"id": "workspace:x", "type": "workspace", "title": "x",
+  "actions": [{"id": "open", "label": "Open", "open": {"href": "https://example.com/"}}],
+  "data": {"apps": []}}]}]}

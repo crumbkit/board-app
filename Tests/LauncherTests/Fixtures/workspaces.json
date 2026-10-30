@@ -1,0 +1,61 @@
+{
+  "kind": "launcher/items/v1",
+  "sections": [
+    {
+      "title": "Running",
+      "items": [
+        {
+          "id": "workspace:login-fix",
+          "type": "workspace",
+          "title": "login-fix",
+          "subtitle": "web · api",
+          "keywords": ["web", "api", "auth"],
+          "status": {"tone": "good", "word": "Running"},
+          "children": ["/usr/local/bin/workspaces", "parts", "login-fix"],
+          "actions": [
+            {"id": "open-web", "label": "Open web", "open": {"href": "http://localhost:3000/", "reach": "mac-only"}},
+            {"id": "copy-branch", "label": "Copy branch", "copy": "login-fix"},
+            {
+              "id": "stop", "label": "Stop workspace",
+              "run": {
+                "argv": ["/usr/local/bin/workspaces", "stop", "login-fix"],
+                "confirm": {"preview": ["/usr/local/bin/workspaces", "stop", "login-fix", "--dry-run"]}
+              }
+            }
+          ],
+          "data": {
+            "apps": [
+              {"name": "web", "link": {"href": "http://localhost:3000/", "reach": "mac-only"}},
+              {"name": "api", "link": {"href": "https://api.example.com/", "reach": "public"}}
+            ],
+            "branch": "login-fix",
+            "updated": "2026-10-30T09:12:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Recently stopped",
+      "items": [
+        {
+          "id": "workspace:search-tuning",
+          "type": "workspace",
+          "title": "search-tuning",
+          "subtitle": "2 d ago",
+          "status": {"tone": "neutral", "word": "Stopped"},
+          "actions": [
+            {"id": "start", "label": "Start workspace", "run": {"argv": ["/usr/local/bin/workspaces", "start", "search-tuning"]}},
+            {"id": "copy-name", "label": "Copy name", "copy": "search-tuning"}
+          ],
+          "data": {"apps": [{"name": "web"}]}
+        },
+        {
+          "id": "job:nightly",
+          "type": "job",
+          "title": "nightly",
+          "data": {"anything": true}
+        }
+      ]
+    }
+  ]
+}
