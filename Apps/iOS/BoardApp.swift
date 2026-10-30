@@ -11,7 +11,9 @@ struct BoardApp: App {
 
   var body: some Scene {
     WindowGroup {
-      if paired {
+      if Fixture.on {
+        InboxView(requests: PhoneRequests(preview: Fixture.requests))
+      } else if paired {
         InboxView(requests: PhoneRequests())
       } else {
         PairingView()

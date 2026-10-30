@@ -5,8 +5,9 @@ holds `attention-sign`, the Touch ID window in which the owner signs
 orders and Board approvals, and pairing of a phone with the Mac.
 
 No screen is added unless the owner has signed off its design.
-Agents never ship or install builds of the iPhone app, so never run
-`bin/install-phone`; the owner installs them, through `bin/setup`.
+Agents never ship the iPhone app or install it on the owner's devices, so
+never run `bin/install-phone`; the owner installs it, through `bin/setup`.
+Agents may build and run it in the iOS Simulator.
 
 ## Docs
 

@@ -1,227 +1,187 @@
 // The inbox: the requests plugins asked the owner to answer, newest first.
-// It follows the signed-off Inbox design: a compact list with the board
-// switcher in its title, a regular layout with a boards sidebar, and a
-// tabletop layout with the boards as buttons on the lower half.
+// It follows the signed-off Inbox v2 design: a NavigationSplitView with a
+// Boards list and the requests of the chosen board, laid out as Mail lays out
+// mailboxes and messages. The tabletop pose puts the Boards list on the lower
+// half.
 import Requests
 import SwiftUI
 
+/// The boards the inbox can show: every board, or one by its git remote.
+enum BoardChoice: Hashable {
+  case all
+  case board(String)
+
+  var name: String? {
+    if case .board(let name) = self { return name }
+    return nil
+  }
+}
+
 struct InboxView: View {
   @State var requests: PhoneRequests
-  /// The board the list is narrowed to, or nil for every board.
-  @State private var board: String?
-  @State private var choosingBoard = false
+  /// No choice shows every board; the compact split view shows the Boards
+  /// list only while nothing is chosen.
+  @State private var choice: BoardChoice? = Fixture.boards ? nil : .all
+  /// The app opens on All Boards; Back leads to the Boards list.
+  @State private var column: NavigationSplitViewColumn = Fixture.boards ? .sidebar : .detail
+  /// The Boards sidebar beside the requests, hidden while a request is open so
+  /// that it fills the screen.
+  @State private var columns: NavigationSplitViewVisibility =
+    Fixture.open == nil ? .all : .detailOnly
   @State private var halfOpen = false
   /// The request screen open, by request id.
-  @State private var path: [String] = []
+  @State private var path: [String] = Fixture.open.map { [$0.id] } ?? []
+  @State private var refusing: Request?
   @Environment(\.horizontalSizeClass) private var sizeClass
 
   var body: some View {
-    NavigationStack(path: $path) {
-      GeometryReader { geometry in
-        let portrait = geometry.size.height > geometry.size.width
-        if sizeClass == .regular && halfOpen && portrait {
-          tabletop(geometry)
-        } else if sizeClass == .regular {
-          regular(sidebarWidth: portrait ? geometry.size.width * 0.35 : geometry.size.width / 2)
-        } else {
-          compact
-        }
-      }
-      .toolbar(.hidden, for: .navigationBar)
-      .navigationTitle("Inbox")
-      .navigationDestination(for: String.self) { id in
-        if let request = requests.request(id) {
-          RequestView(request: request, requests: requests)
-        }
-      }
-      .onChange(of: requests.inbox.boards.map(\.name)) { _, names in
-        // A board leaves the list once nothing waits in it.
-        if let board, !names.contains(board) { self.board = nil }
-      }
-      .onChange(of: requests.inbox.requests.map(\.id)) { _, ids in
-        // A request answered here or elsewhere closes its screen.
-        path.removeAll { !ids.contains($0) }
+    GeometryReader { geometry in
+      // An open request fills the screen and lays out its own tabletop pose.
+      if sizeClass == .regular && halfOpen && geometry.size.height > geometry.size.width
+        && path.isEmpty
+      {
+        tabletop(geometry)
+      } else {
+        split
       }
     }
     .background(HingeReader(halfOpen: $halfOpen))
-    .overlay(alignment: .bottom) { toast }
+    .refuseAlert($refusing, requests: requests)
     .task { await requests.watch() }
-  }
-
-  private var title: String { board ?? "All boards" }
-
-  /// What the last answer did, for four seconds.
-  @ViewBuilder private var toast: some View {
-    if let message = requests.message {
-      Label(message, systemImage: "checkmark")
-        .font(.footnote)
-        .foregroundStyle(Color(.systemBackground))
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary, in: .rect(cornerRadius: 14))
-        .padding(.horizontal, 14)
-        .padding(.bottom, 26)
-        .task(id: message) {
-          try? await Task.sleep(for: .seconds(4))
-          requests.message = nil
-        }
+    .onChange(of: requests.inbox.boards.map(\.name)) { _, names in
+      // A board leaves the list once nothing waits in it.
+      if let name = choice?.name, !names.contains(name) { choice = .all }
     }
+    .onChange(of: requests.inbox.requests.map(\.id)) { _, ids in
+      // A request answered here or elsewhere closes its screen.
+      path.removeAll { !ids.contains($0) }
+    }
+    .onChange(of: path.isEmpty) { _, empty in columns = empty ? .all : .detailOnly }
   }
+
+  private var board: String? { choice?.name }
+  private var title: String { board ?? "All Boards" }
   private var shown: [Request] { requests.inbox.requests(in: board) }
 
   // MARK: Layouts
 
-  private var compact: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        Button {
-          choosingBoard = true
-        } label: {
-          HStack(spacing: 4) {
-            Text(title).font(.title.bold()).foregroundStyle(.primary)
-            Image(systemName: "chevron.down").font(.headline)
-          }
-        }
-        header
-      }
-      .padding(.horizontal, 16)
+  /// The Boards list beside the requests, or behind Back in compact width.
+  /// The inbox has no bar items, so the sidebar has no toggle.
+  private var split: some View {
+    NavigationSplitView(columnVisibility: $columns, preferredCompactColumn: $column) {
+      BoardsList(inbox: requests.inbox, choice: $choice)
+        .navigationTitle("Boards")
+        .toolbar(removing: .sidebarToggle)
+    } detail: {
+      stack(.large)
     }
-    .defaultScrollAnchor(.top)
-    .overlay { if shown.isEmpty { empty } }
-    .sheet(isPresented: $choosingBoard) {
-      BoardsSheet(inbox: requests.inbox, board: $board).presentationDetents([.medium])
-    }
+    .navigationSplitViewStyle(.balanced)
   }
 
-  private func regular(sidebarWidth: CGFloat) -> some View {
-    HStack(spacing: 0) {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 2) {
-          sidebarHeading
-          boardItem(nil, "All boards", requests.inbox.requests.count)
-          ForEach(requests.inbox.boards, id: \.name) { boardItem($0.name, $0.name, $0.count) }
-        }
-        .padding(10)
-      }
-      .frame(width: sidebarWidth)
-      .background(Color(.secondarySystemBackground))
-      ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
-          Text(title).font(.title2.bold())
-          header
-        }
-        .padding(.horizontal, 16)
-      }
-      .overlay { if shown.isEmpty { empty } }
-    }
-  }
-
-  /// The list above the fold and the boards below it. The fold is the
-  /// middle of the whole screen, not of the safe area, whose top and bottom
-  /// insets differ.
+  /// The requests above the fold and the Boards list below it. The fold is
+  /// the middle of the whole screen, not of the safe area, whose top and
+  /// bottom insets differ.
   private func tabletop(_ geometry: GeometryProxy) -> some View {
     let insets = geometry.safeAreaInsets
     let fold = (geometry.size.height + insets.top + insets.bottom) / 2 - insets.top
     return VStack(spacing: 0) {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
-          Text(title).font(.title3.bold())
-          header
-        }
-        .padding(.horizontal, 14)
-      }
-      .frame(height: fold)
-      .overlay { if shown.isEmpty { empty } }
-      VStack(alignment: .leading, spacing: 8) {
-        sidebarHeading
-        boardButton(nil, "All boards", requests.inbox.requests.count)
-        ForEach(requests.inbox.boards, id: \.name) { boardButton($0.name, $0.name, $0.count) }
-        Spacer(minLength: 0)
-      }
-      .padding(16)
-      .frame(height: geometry.size.height - fold)
+      stack(.inline).frame(height: fold)
+      BoardsPicker(inbox: requests.inbox, choice: $choice)
+        .frame(height: geometry.size.height - fold)
     }
   }
 
-  // MARK: Parts
-
-  /// The count, the out-of-date banner and the rows. It redraws every 30
-  /// seconds, so the banner appears even when no read succeeds, and a row's
-  /// "Yesterday" moves on at midnight.
-  private var header: some View {
-    TimelineView(.periodic(from: .now, by: 30)) { context in
-      VStack(alignment: .leading, spacing: 0) {
-        if !shown.isEmpty {
-          Text("\(shown.count) waiting").font(.subheadline).foregroundStyle(.secondary)
-            .padding(.bottom, 8)
-        }
-        if requests.isOutOfDate(now: context.date), let shared = requests.shared {
-          OutOfDate(shared: shared)
-        }
-        ForEach(shown) { request in
-          NavigationLink(value: request.id) {
-            RequestRow(request: request, now: context.date)
+  private func stack(_ mode: NavigationBarItem.TitleDisplayMode) -> some View {
+    NavigationStack(path: $path) {
+      RequestList(requests: requests, shown: shown, refusing: $refusing)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(mode)
+        .navigationDestination(for: String.self) { id in
+          if let request = requests.request(id) {
+            RequestView(request: request, requests: requests)
           }
-          .buttonStyle(.plain)
-          if request.id != shown.last?.id { Divider() }
+        }
+    }
+  }
+}
+
+/// The requests of one board, or of every board. It redraws every 30
+/// seconds, so the subtitle says the list is out of date even when no read
+/// succeeds, and a row's "Yesterday" moves on at midnight.
+struct RequestList: View {
+  let requests: PhoneRequests
+  let shown: [Request]
+  @Binding var refusing: Request?
+
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: 30)) { context in
+      let stale = requests.isOutOfDate(now: context.date)
+      List {
+        Section {
+          ForEach(shown) { request in
+            NavigationLink(value: request.id) {
+              RequestRow(request: request, now: context.date)
+            }
+            .swipeActions(edge: .trailing) {
+              // Not a destructive role, which would remove the row before the
+              // alert asks.
+              Button {
+                refusing = request
+              } label: {
+                Label("Refuse", systemImage: "xmark")
+              }
+              .tint(.red)
+              .disabled(requests.sending.contains(request.id))
+            }
+          }
+        } header: {
+          // Before iOS 26 there is no navigation subtitle, so the list says it.
+          if #unavailable(iOS 26), let text = subtitle(stale: stale) {
+            Text(text)
+          }
+        } footer: {
+          if stale {
+            Text(
+              "Your Mac shares new requests while it is awake and Board is open on it. Pull down to try again."
+            )
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+          }
         }
       }
-    }
-  }
-
-  private var empty: some View {
-    VStack(spacing: 6) {
-      Image(systemName: "tray").font(.system(size: 40)).foregroundStyle(.tertiary)
-      Text("Nothing waiting").font(.headline)
-      Text("When a plugin asks before it acts, the request appears here.")
-        .foregroundStyle(.secondary)
-    }
-    .multilineTextAlignment(.center)
-    .padding(20)
-  }
-
-  private var sidebarHeading: some View {
-    Text("Boards").font(.caption.weight(.semibold)).textCase(.uppercase)
-      .foregroundStyle(.secondary).padding(.horizontal, 9).padding(.vertical, 4)
-  }
-
-  private func boardItem(_ name: String?, _ label: String, _ count: Int) -> some View {
-    let on = board == name
-    return Button {
-      board = name
-    } label: {
-      HStack {
-        Text(label).lineLimit(1).truncationMode(.tail)
-        Spacer(minLength: 6)
-        Text("\(count)").font(.footnote).foregroundStyle(on ? .white : .secondary)
+      .listStyle(.plain)
+      .overlay {
+        if shown.isEmpty {
+          ContentUnavailableView(
+            "No Requests", systemImage: "tray",
+            description: Text("When a plugin asks before it acts, its request appears here."))
+        }
       }
-      .fontWeight(on ? .semibold : .regular)
-      .foregroundStyle(on ? .white : .primary)
-      .padding(.horizontal, 9)
-      .padding(.vertical, 7)
-      .background(on ? Color.accentColor : .clear, in: .rect(cornerRadius: 9))
+      .subtitle(subtitle(stale: stale))
     }
-    .buttonStyle(.plain)
+    .refreshable { await requests.refresh() }
   }
 
-  private func boardButton(_ name: String?, _ label: String, _ count: Int) -> some View {
-    let on = board == name
-    return Button {
-      board = name
-    } label: {
-      HStack {
-        Text(label).lineLimit(1)
-        Spacer()
-        Text("\(count)").foregroundStyle(on ? .white : .secondary)
-      }
-      .fontWeight(.semibold)
-      .frame(maxWidth: .infinity)
-      .padding(12)
-      .foregroundStyle(on ? .white : .primary)
-      .background(
-        on ? Color.accentColor : Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+  /// The count, or how old the list is when the Mac has stopped sharing.
+  private func subtitle(stale: Bool) -> String? {
+    if stale, let shared = requests.shared {
+      let today = Calendar.current.isDateInToday(shared)
+      return
+        "Mac last shared requests at \(shared.formatted(date: today ? .omitted : .abbreviated, time: .shortened))"
     }
-    .buttonStyle(.plain)
+    return shown.isEmpty ? nil : "\(shown.count) Waiting"
+  }
+}
+
+extension View {
+  /// The navigation subtitle, on iOS 26 and later. An empty one shows
+  /// nothing, and keeps the list's identity when the count goes.
+  @ViewBuilder func subtitle(_ text: String?) -> some View {
+    if #available(iOS 26, *) {
+      navigationSubtitle(text ?? "")
+    } else {
+      self
+    }
   }
 }
 
@@ -230,78 +190,95 @@ struct RequestRow: View {
   var now = Date()
 
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Badge(plugin: request.plugin)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(request.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-        Text(request.sentence).font(.footnote).foregroundStyle(.secondary)
-        Text("\(request.boardName) · \(askedLabel(request.asked, now: now))")
-          .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(request.name).font(.headline).lineLimit(2)
+        Spacer(minLength: 8)
+        Text(askedLabel(request.asked, now: now)).font(.subheadline).foregroundStyle(.secondary)
       }
-      Spacer(minLength: 0)
+      Text(request.sentence).font(.subheadline)
+      Text(request.boardName).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
     }
-    .padding(.vertical, 10)
-    .contentShape(.rect)
   }
 }
 
-/// The phone cannot reach new requests, so the list says how old it is.
-struct OutOfDate: View {
-  let shared: Date
-
-  var body: some View {
-    Label {
-      Text(
-        "This list may be out of date. Your Mac last shared requests at \(shared.formatted(date: Calendar.current.isDateInToday(shared) ? .omitted : .abbreviated, time: .shortened)). Open Board on the Mac, or check that it is awake."
-      )
-    } icon: {
-      Image(systemName: "clock")
-    }
-    .font(.footnote)
-    .foregroundStyle(Color.orange)
-    .padding(10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 10))
-    .padding(.vertical, 8)
-  }
-}
-
-/// The board switcher the compact title opens.
-struct BoardsSheet: View {
+/// The Boards column: All Boards, then each board with requests waiting. It
+/// is a sidebar beside the requests, and an inset grouped screen behind Back.
+struct BoardsList: View {
   let inbox: Inbox
-  @Binding var board: String?
-  @Environment(\.dismiss) private var dismiss
+  @Binding var choice: BoardChoice?
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      Text("Boards").font(.headline).padding(.bottom, 6)
-      row(nil, "All boards", inbox.requests.count)
-      ForEach(inbox.boards, id: \.name) { row($0.name, $0.name, $0.count) }
-      Text(
-        "Boards are named by their git remote. A board appears here while it has requests waiting."
-      )
-      .font(.footnote).foregroundStyle(.secondary).padding(.top, 8)
-      Spacer(minLength: 0)
+    let list = List(selection: $choice) {
+      Section {
+        NavigationLink(value: BoardChoice.all) {
+          row("All Boards", "tray.2", inbox.requests.count)
+        }
+      }
+      Section {
+        ForEach(inbox.boards, id: \.name) { board in
+          NavigationLink(value: BoardChoice.board(board.name)) {
+            row(board.name, "folder", board.count)
+          }
+        }
+      } header: {
+        Text("Boards")
+      } footer: {
+        Text(
+          "A board is named by its git remote. A board appears here while it has requests waiting.")
+      }
     }
-    .padding(16)
+    if sizeClass == .regular {
+      list.listStyle(.sidebar)
+    } else {
+      list.listStyle(.insetGrouped)
+    }
   }
 
-  private func row(_ name: String?, _ label: String, _ count: Int) -> some View {
+  /// The count before the chevron, as Mail shows it. A list badge would
+  /// follow the chevron in an inset grouped list.
+  private func row(_ name: String, _ symbol: String, _ count: Int) -> some View {
+    HStack {
+      Label(name, systemImage: symbol)
+      Spacer()
+      Text("\(count)").foregroundStyle(.secondary)
+    }
+  }
+}
+
+/// The Boards list on the lower half in the tabletop pose, with a checkmark
+/// on the chosen board, as in a Settings picker.
+struct BoardsPicker: View {
+  let inbox: Inbox
+  @Binding var choice: BoardChoice?
+
+  var body: some View {
+    List {
+      Section("Boards") {
+        row(.all, "All Boards", "tray.2", inbox.requests.count)
+        ForEach(inbox.boards, id: \.name) { board in
+          row(.board(board.name), board.name, "folder", board.count)
+        }
+      }
+    }
+    .listStyle(.insetGrouped)
+  }
+
+  private func row(_ value: BoardChoice, _ name: String, _ symbol: String, _ count: Int)
+    -> some View
+  {
     Button {
-      board = name
-      dismiss()
+      choice = value
     } label: {
       HStack {
-        Text(label).fontWeight(name == nil ? .semibold : .regular)
+        Label(name, systemImage: symbol)
         Spacer()
         Text("\(count)").foregroundStyle(.secondary)
-        if board == name { Image(systemName: "checkmark").foregroundStyle(.tint) }
+        Image(systemName: "checkmark").foregroundStyle(.tint).opacity(choice == value ? 1 : 0)
       }
-      .padding(.vertical, 10)
-      .contentShape(.rect)
     }
-    .buttonStyle(.plain)
-    .overlay(alignment: .bottom) { Divider() }
+    .foregroundStyle(.primary)
   }
 }
 

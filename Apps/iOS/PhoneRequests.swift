@@ -8,8 +8,8 @@ final class PhoneRequests {
   private(set) var inbox: Inbox
   /// When the Mac last shared, or nil before it ever has.
   private(set) var shared: Date?
-  /// What the last answer did, shown briefly over the inbox.
-  var message: String?
+  /// Requests whose answer is on its way, so a second answer sends nothing.
+  private(set) var sending: Set<String> = []
   /// Requests answered here, hidden until the Mac removes them.
   private var answered: Set<String> = []
   /// Every request read since launch, so a request screen still has its
@@ -63,26 +63,29 @@ final class PhoneRequests {
   /// Signs the request's statement with Face ID or Touch ID and sends the
   /// approval. Throws when the owner cancels it or iCloud refuses the answer.
   func approve(_ request: Request) async throws {
+    guard sending.insert(request.id).inserted else { return }
+    defer { sending.remove(request.id) }
     let effect = request.effect
     let signature = try await Task.detached { try await PhoneKey.approve(effect) }.value
     try await send(
-      RequestAnswer(id: request.id, approve: true, reason: nil, signature: signature),
-      saying: request.approved)
+      RequestAnswer(id: request.id, approve: true, reason: nil, signature: signature))
   }
 
   /// Sends a refusal, which is not signed.
   func refuse(_ request: Request, reason: String) async throws {
+    guard sending.insert(request.id).inserted else { return }
+    defer { sending.remove(request.id) }
     let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
     try await send(
       RequestAnswer(
-        id: request.id, approve: false, reason: reason.isEmpty ? nil : reason, signature: nil),
-      saying: request.refused)
+        id: request.id, approve: false, reason: reason.isEmpty ? nil : reason, signature: nil))
   }
 
-  private func send(_ answer: RequestAnswer, saying message: String) async throws {
+  /// Sends the answer and removes the request from the inbox, which is all
+  /// the owner sees of it.
+  private func send(_ answer: RequestAnswer) async throws {
     try await cloud?.answer(answer)
     answered.insert(answer.id)
     inbox = Inbox(inbox.requests.filter { $0.id != answer.id })
-    self.message = message
   }
 }

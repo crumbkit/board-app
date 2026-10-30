@@ -72,13 +72,13 @@ public struct Request: Identifiable, Sendable {
     return words.prefix(1).uppercased() + words.dropFirst()
   }
 
-  /// The request screen's heading, such as "Change a task" or "Post a review".
+  /// The request screen's title, such as "Change a Task" or "Post a Review".
   public var heading: String {
     switch kind {
-    case .change: "Change a \(noun)"
-    case .add: "Add a \(noun)"
-    case .remove: "Remove a \(noun)"
-    case .action(let verb): "\(verb.prefix(1).uppercased() + verb.dropFirst()) a \(singular)"
+    case .change: "Change a \(capitalized(noun))"
+    case .add: "Add a \(capitalized(noun))"
+    case .remove: "Remove a \(capitalized(noun))"
+    case .action(let verb): "\(capitalized(verb)) a \(capitalized(singular))"
     }
   }
 
@@ -91,16 +91,6 @@ public struct Request: Identifiable, Sendable {
     case .action(let verb): "\(plugin) asks to \(verb) it"
     }
   }
-
-  /// What the message after an approval says the approval allows.
-  public var approved: String {
-    if case .action = kind {
-      return "Approved. \(plugin) will not ask again until you take this back."
-    }
-    return "Approved. \(plugin) can write this version of “\(name)” the next time it asks."
-  }
-
-  public var refused: String { "Refused. \(plugin) has been told no." }
 
   /// Whether the file changed after the plugin asked, so an approval would
   /// not fit: the blob there now is not the one the put replaces, or the one
@@ -191,6 +181,10 @@ public struct Request: Identifiable, Sendable {
     }
     return fields
   }
+}
+
+private func capitalized(_ word: String) -> String {
+  word.prefix(1).uppercased() + word.dropFirst()
 }
 
 /// The requests waiting, newest first, and the boards they wait in.

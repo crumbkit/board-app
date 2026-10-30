@@ -33,25 +33,21 @@ final class RequestTests: XCTestCase {
   func testATaskIsNamedByItsTitleAndWordedAsAChange() throws {
     let task = try Self.request(Self.task)
     XCTAssertEqual(task.name, "Write the release notes")
-    XCTAssertEqual(task.heading, "Change a task")
+    XCTAssertEqual(task.heading, "Change a Task")
     XCTAssertEqual(task.sentence, "tasks wants to change this task")
-    XCTAssertEqual(
-      task.approved,
-      "Approved. tasks can write this version of “Write the release notes” the next time it asks.")
-    XCTAssertEqual(task.refused, "Refused. tasks has been told no.")
   }
 
   func testARecordWithNoTitleIsNamedByItsFileNameInWords() throws {
     let control = try Self.request(Self.control)
     XCTAssertEqual(control.name, "Docs map budget")
-    XCTAssertEqual(control.heading, "Change a control")
+    XCTAssertEqual(control.heading, "Change a Control")
     XCTAssertEqual(control.sentence, "controls wants to change this control")
   }
 
   func testAPlainActionIsNamedByItsPathAndWordedByItsOp() throws {
     let review = try Self.request(Self.review)
     XCTAssertEqual(review.name, "fix-sync report")
-    XCTAssertEqual(review.heading, "Post a review")
+    XCTAssertEqual(review.heading, "Post a Review")
     XCTAssertEqual(review.sentence, "review asks to post it")
     XCTAssertFalse(review.isStale)
   }
@@ -59,7 +55,7 @@ final class RequestTests: XCTestCase {
   func testAPutWithNoPriorAddsAFile() throws {
     let note = try Self.request(
       #""plugin": "notes", "op": "put", "path": "/notes/v1.2-a-b.md", "text": "x""#)
-    XCTAssertEqual(note.heading, "Add a file")
+    XCTAssertEqual(note.heading, "Add a File")
     XCTAssertEqual(note.sentence, "notes wants to add this file")
     XCTAssertEqual(note.name, "V1.2 a b")
     XCTAssertFalse(note.isStale)
@@ -105,14 +101,14 @@ final class RequestTests: XCTestCase {
     let removal = try Self.request(
       #""plugin": "tasks", "op": "rm", "path": "/tasks/a.md""#,
       prior: "---\n$type: \"tasks/task/v2\"\ntitle: \"Old task\"\n---\n")
-    XCTAssertEqual(removal.heading, "Remove a task")
+    XCTAssertEqual(removal.heading, "Remove a Task")
     XCTAssertEqual(removal.sentence, "tasks wants to remove this task")
     XCTAssertEqual(removal.name, "Old task")
   }
 
   func testAnActionOfAPluralPluginIsHeadedByOneThing() throws {
     let close = try Self.request(#""plugin": "tasks", "op": "tasks.close", "path": "/tasks/a""#)
-    XCTAssertEqual(close.heading, "Close a task")
+    XCTAssertEqual(close.heading, "Close a Task")
     XCTAssertEqual(close.sentence, "tasks asks to close it")
   }
 

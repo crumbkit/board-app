@@ -120,3 +120,48 @@ enum PreviewRequests {
       current: current, currentContent: currentContent.map { Data($0.utf8) })
   }
 }
+
+/// Launch options that open the app on these requests instead of iCloud's,
+/// for screenshots in the Simulator. `-fixtures` turns them on; `-open task`
+/// opens a request by its name here, `-boards` opens on the Boards list, and
+/// `-sheet sign` or `-sheet refuse` opens What You Sign or the Refuse alert.
+/// Release builds ignore them.
+enum Fixture {
+  static var on: Bool {
+    #if DEBUG
+      CommandLine.arguments.contains("-fixtures")
+    #else
+      false
+    #endif
+  }
+
+  static var boards: Bool { on && CommandLine.arguments.contains("-boards") }
+  static var sheet: String? { on ? value("-sheet") : nil }
+
+  /// The request `-open` names.
+  static var open: Request? {
+    switch on ? value("-open") : nil {
+    case "task": PreviewRequests.task
+    case "control": PreviewRequests.control
+    case "review": PreviewRequests.review
+    case "stale": PreviewRequests.stale
+    case "noPrior": PreviewRequests.noPrior
+    default: nil
+    }
+  }
+
+  /// The inbox's requests, with the opened one in place of any that shares
+  /// its id, as the stale task shares the task's.
+  static var requests: [Request] {
+    guard let open else { return PreviewRequests.all }
+    return PreviewRequests.all.filter { $0.id != open.id } + [open]
+  }
+
+  private static func value(_ option: String) -> String? {
+    let arguments = CommandLine.arguments
+    guard let index = arguments.firstIndex(of: option), index + 1 < arguments.count else {
+      return nil
+    }
+    return arguments[index + 1]
+  }
+}
