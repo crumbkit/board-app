@@ -80,7 +80,8 @@ struct LinkLine: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      Text(link.href.absoluteString).font(.callout.monospaced()).underline().lineLimit(1)
+      Text(link.href.absoluteString).font(.callout.monospaced()).foregroundStyle(Palette.accent)
+        .lineLimit(1)
       Text(Self.word(link.reach)).font(.caption).foregroundStyle(Palette.secondaryText)
     }
   }
