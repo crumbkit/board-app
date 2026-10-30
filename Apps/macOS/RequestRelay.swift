@@ -9,9 +9,15 @@ final class RequestRelay {
   private let cloud = RequestCloud()
   private let home = FileManager.default.homeDirectoryForCurrentUser
 
-  /// Shares and answers every 10 seconds until the app quits.
+  /// Shares and answers every 10 seconds until the app quits. A build that
+  /// may not use iCloud says so once and shares nothing.
   func run() async {
-    try? await cloud.prepare()
+    do {
+      try await cloud.prepare()
+    } catch let error as CloudUnavailable {
+      log("Board will not share requests: \(error.localizedDescription)")
+      return
+    } catch {}
     while !Task.isCancelled {
       do {
         let pending = try await pendingRequests()

@@ -36,4 +36,8 @@ Zone `Requests` carries pending effects to the phone and answers back.
   refuses the answer, or its request is no longer pending, the Mac deletes the
   answer alone.
 
+A build without the iCloud entitlement, such as an unsigned one, makes no
+container. The Mac logs that iCloud is unavailable and shares nothing, and
+pairing shows the same error.
+
 Not built: push notifications.

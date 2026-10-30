@@ -56,8 +56,9 @@ struct RequestAnswer: Sendable, Equatable {
 }
 
 struct RequestCloud: Sendable {
-  private let database = CKContainer(identifier: "iCloud.com.stemmacorp.board")
-    .privateCloudDatabase
+  /// Made on first use, so a build without iCloud starts and each call throws
+  /// CloudUnavailable.
+  private var database: CKDatabase { get throws { try boardDatabase() } }
   private let zone = CKRecordZone.ID(zoneName: "Requests")
   /// The record the Mac rewrites each time it shares, so the phone can say how
   /// old its list is.
