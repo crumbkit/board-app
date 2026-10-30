@@ -3,15 +3,18 @@
 # the Board release from bin/bundle, and it, every executable in that release
 # and the disk image are signed with the team's Developer ID. When the
 # notarytool keychain profile NOTARY_PROFILE (default board-notary) works,
-# the image is notarised and the ticket stapled to it. When the default
-# profile does not work, that step is skipped and the command that stores it
-# is printed; a profile named in NOTARY_PROFILE that does not work is an error.
+# the image is notarised and the ticket stapled to it. Only when the default
+# profile is not stored is that step skipped, and the command that stores it
+# printed. Any other notarytool error, and a profile named in NOTARY_PROFILE
+# that does not work, stops it with an error.
 #
 #   bin/dmg [board-ref] [attention-ref]   the refs go to bin/bundle
 #
-# It writes .build/dmg/Board-<version>-<release id>.dmg, and checks the
-# signatures, the hardened runtime and that the bundled board runs from the
-# mounted image. Any failed check stops it with an error.
+# It writes .build/dmg/Board-<version>-<release id>.dmg, or
+# Board-<version>-<release id>-unnotarised.dmg when the image is not
+# notarised. The image gets that name only after it checks the signatures,
+# the hardened runtime and that the bundled board runs from the mounted
+# image. Any failed check stops it with an error.
 set -eu
 cd "$(dirname "$0")/.."
 team=78HLU526FA
@@ -60,8 +63,10 @@ app="$out/export/Board.app"
 # Re-sign with the certificate the export used, by its hash, because the
 # Developer ID profile in the app lists only that one; after a renewal the
 # keychain may hold another.
-codesign -d --extract-certificates="$out/cert" "$app" 2>/dev/null
+codesign -d --extract-certificates="$out/cert" "$app" >/dev/null 2>&1 ||
+  fail "could not read the certificate the export signed with"
 identity=$(shasum -a 1 "$out/cert0" | awk '{ print toupper($1) }')
+[ -n "$identity" ] || fail "the export's signature has no certificate"
 security find-identity -v -p codesigning | grep -q "$identity" ||
   fail "the identity the export signed with, $identity, is not in the keychain"
 release="$app/Contents/Resources/board"
