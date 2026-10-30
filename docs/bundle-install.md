@@ -22,7 +22,7 @@
 ## Not built
 
 - Plugins fetch their Python packages when installed, so an install needs
-  the network. attention fetches board-plugin from the private board
+  the network. attention fetches board-plugin from the crumbkit/board
   repository on GitHub, so it also needs access to it.
 - attention uses board-plugin at the commit its own lock pins, from GitHub,
   not the copy in the release.

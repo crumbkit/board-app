@@ -1,5 +1,5 @@
 // A Board pending effect and the statement the owner signs to approve it. The
-// statement must equal board's `Effect::approval` byte for byte, or Board
+// statement must equal Board's `Effect::approval` byte for byte, or Board
 // refuses the signature; Tests/SSHSigTests/EffectTests.swift pins it.
 import CryptoKit
 import Foundation

@@ -10,11 +10,11 @@ installs it with `install`; `INSTALL.md` beside it tells the agent how.
 
 ## What a release holds
 
-- `bin/board`, built from board, and `bin/attention-sign`, built from this
+- `bin/board`, built from crumbkit/board, and `bin/attention-sign`, built from this
   repository.
-- `plugins/<name>`: every plugin on board's main, and attention from
+- `plugins/<name>`: every plugin on Board's main, and attention from
   board-attention, without their tests.
-- `python/board-plugin`: the library board's plugins depend on by path.
+- `python/board-plugin`: the library Board's plugins depend on by path.
 - `.claude-plugin/marketplace.json`: one Claude Code marketplace, `board`,
   with the hooks of controls, plans, runs and effects, and attention-approve.
 - `release.json`: the three commits, and the release id made from them.

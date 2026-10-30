@@ -3,7 +3,7 @@ import Foundation
 import SSHSig
 import XCTest
 
-/// The repository's copy of board's `vectors/signing/v1`.
+/// The repository's copy of Board's `vectors/signing/v1`.
 enum Vectors {
   static let directory = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -34,8 +34,8 @@ enum Vectors {
   }
 }
 
-/// board, board-attention and this repository build, sign and verify the
-/// same bytes, and board's vectors fix them. These tests prove that this
+/// crumbkit/board, board-attention and this repository build, sign and verify the
+/// same bytes, and Board's vectors fix them. These tests prove that this
 /// repository's builders give the vectors' bytes and namespaces, and that the
 /// lines it writes into allowed signers files admit the vectors' signatures
 /// in the right namespace only. They use the vectors' test keys and temporary

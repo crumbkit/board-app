@@ -39,12 +39,12 @@ hold each literal; a hit anywhere else fails. Only tests may name `SecKey`.
 
 ## Vectors
 
-`vectors/signing/` is a copy of board's signing vectors, taken at board
+`vectors/signing/` is a copy of Board's signing vectors, taken at crumbkit/board
 86643748. `VectorTests` checks this repository's approval statement, namespaces,
 key line and armor against them, parses the order statement, and that the lines it writes admit their
 signatures in the right namespace only. `ManifestTests` refuses a copy whose
 files differ from `manifest.json`. A new layout arrives as a new version
-directory: copy it whole from board and leave `v1` as it is.
+directory: copy it whole from crumbkit/board and leave `v1` as it is.
 
 ## Never
 

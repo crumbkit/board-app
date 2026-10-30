@@ -1,7 +1,7 @@
 # Signing vectors
 
 Fixed statements, signatures and test keys for the bytes board, board-app
-and board-attention build, sign and verify. board's tests check them; the
+and board-attention build, sign and verify. crumbkit/board's tests check them; the
 other two repositories are to test against them.
 docs/architecture/writes/signing.md says how they are used.
 
@@ -24,9 +24,13 @@ docs/architecture/writes/signing.md says how they are used.
 | `write.statement` | board | `board_model::Effect::owner_write` of `approval.effect.json` | `board/write/v1` |
 | `order.statement` | board-attention | `board_attention.order.statement` of `order.record` and `order.context.md` | `attention/order/v1` |
 
-The owner of a layout changes it, and opens the board pull request that adds
+`v1/manifest.json` records the owner of the first two layouts as `viitta`,
+crumbkit/board's earlier name. A version is never edited, so the value
+stays until a new version replaces it.
+
+The owner of a layout changes it, and opens the crumbkit/board pull request that adds
 the version. `order.record` is the order's JSON without a `.json` extension,
-because board is a board and has no schema for `attention/order/v1`.
+because crumbkit/board is a board and has no schema for `attention/order/v1`.
 
 ## Keys
 

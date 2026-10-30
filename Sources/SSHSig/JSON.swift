@@ -1,5 +1,5 @@
 // JSON as Board reads and prints it, so a statement built here matches the
-// bytes board's `Effect::approval` builds. Board prints JSON with
+// bytes Board's `Effect::approval` builds. Board prints JSON with
 // `serde_json`: keys sorted by their UTF-8 bytes, two-space indentation, and
 // numbers in serde_json's own form.
 import Foundation

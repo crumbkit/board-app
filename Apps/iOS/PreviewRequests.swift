@@ -61,7 +61,7 @@ enum PreviewRequests {
   static var review: Request {
     request(
       fields: ["plugin": "review", "op": "review.post", "path": "/reviews/fix-sync/report"],
-      board: "owner/board-src", minutesAgo: 108,
+      board: "crumbkit/board", minutesAgo: 108,
       currentContent: """
         Changes requested · 2 findings
 
@@ -112,7 +112,7 @@ enum PreviewRequests {
     var object = fields
     object["$type"] = "board/effect/v1"
     object["board"] =
-      board == "owner/board" ? "/Users/ana/Code/board" : "/Users/ana/Code/board"
+      board == "owner/board" ? "/Users/ana/Code/board" : "/Users/ana/Code/board-src"
     let data = try! JSONSerialization.data(withJSONObject: object)
     return Request(
       effect: try! Effect(json: data), boardName: board,

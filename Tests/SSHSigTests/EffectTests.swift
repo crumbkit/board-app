@@ -3,12 +3,12 @@ import SSHSig
 import XCTest
 
 /// The phone builds the approval statement itself, from the effect record it
-/// shows. Board rebuilds the same statement with board's `Effect::approval`
+/// shows. Board rebuilds the same statement with Board's `Effect::approval`
 /// and checks the signature against it, so the two must agree byte for byte.
 ///
 /// Each `Fixtures/effects/<name>.statement` was printed by a program that
-/// calls `board_model::Effect::approval` at board 492317cd on
-/// `<name>.effect.json`. `vector.*` is board's own `vectors/signing/v1`
+/// calls `board_model::Effect::approval` at crumbkit/board 492317cd on
+/// `<name>.effect.json`. `vector.*` is Board's own `vectors/signing/v1`
 /// approval pair. These tests prove agreement on these inputs only: the
 /// fixtures cover text with a prior, a record with unsorted and byte-ordered
 /// keys and every number form, a plain action, hidden characters, and a

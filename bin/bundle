@@ -5,18 +5,19 @@
 #
 #   bin/bundle [board-ref] [attention-ref]
 #
-# Each ref defaults to origin/main of the checkout BOARD_SRC or ATTENTION names,
-# ~/Code/board and ~/Code/board-attention when unset. The checkouts' working
+# Each ref defaults to origin/main of the checkout BOARD_SRC or ATTENTION
+# names. When unset, they are the crumbkit/board checkout at ~/Code/board and
+# ~/Code/board-attention. The checkouts' working
 # trees are only read through git, so their branch and changes do not matter.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-board=${BOARD_SRC:-$HOME/Code/board}
+board_src=${BOARD_SRC:-$HOME/Code/board}
 attention=${ATTENTION:-$HOME/Code/board-attention}
 
-git -C "$board" fetch -q origin
+git -C "$board_src" fetch -q origin
 git -C "$attention" fetch -q origin
-board_commit=$(git -C "$board" rev-parse "${1:-origin/main}^{commit}")
+board_commit=$(git -C "$board_src" rev-parse "${1:-origin/main}^{commit}")
 attention_commit=$(git -C "$attention" rev-parse "${2:-origin/main}^{commit}")
 app_commit=$(git -C "$repo" rev-parse HEAD)
 if [ -n "$(git -C "$repo" status --porcelain -- Sources Install Package.swift Package.resolved)" ]; then
@@ -26,34 +27,34 @@ fi
 
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-mkdir "$work/board" "$work/attention"
-git -C "$board" archive "$board_commit" | tar -x -C "$work/board"
+mkdir "$work/board-src" "$work/attention"
+git -C "$board_src" archive "$board_commit" | tar -x -C "$work/board-src"
 git -C "$attention" archive "$attention_commit" | tar -x -C "$work/attention"
 
-echo "Building board at board ${board_commit:0:12}."
+echo "Building board at crumbkit/board ${board_commit:0:12}."
 CARGO_TARGET_DIR="$repo/.build/cargo" cargo build --release --locked --quiet \
-  --manifest-path "$work/board/Cargo.toml" -p board-cli
+  --manifest-path "$work/board-src/Cargo.toml" -p board-cli
 echo "Building attention-sign at board-app ${app_commit:0:12}."
 (cd "$repo" && swift build -c release --product attention-sign >/dev/null)
 
 stage="$work/board"
 mkdir -p "$stage/bin" "$stage/plugins" "$stage/.claude-plugin"
 cp "$repo/.build/cargo/release/board" "$repo/.build/release/attention-sign" "$stage/bin/"
-# board's plugins reach board-plugin at ../../python/board-plugin.
-rsync -a --exclude tests/ --exclude .venv/ "$work/board/python/" "$stage/python/"
-for plugin in "$work"/board/plugins/*/; do
+# Board's plugins reach board-plugin at ../../python/board-plugin.
+rsync -a --exclude tests/ --exclude .venv/ "$work/board-src/python/" "$stage/python/"
+for plugin in "$work"/board-src/plugins/*/; do
   rsync -a --exclude tests/ --exclude .venv/ "$plugin" "$stage/plugins/$(basename "$plugin")/"
 done
 rsync -a --exclude tests/ --exclude .venv/ --exclude /.github/ --exclude /.claude/ \
   --exclude /.claude-plugin/ "$work/attention/" "$stage/plugins/attention/"
 cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$stage/"
 
-# One marketplace for every Claude Code plugin in the bundle: board's entries
+# One marketplace for every Claude Code plugin in the bundle: Board's entries
 # point under plugins/<name>/, attention's at plugins/attention/claude-code.
 jq --arg attention "./plugins/attention/claude-code" '
   .plugins += [{name: "attention-approve", source: $attention}]
   | .description = "Claude Code hooks of Board and its plugins, from Board.app."
-' "$work/board/.claude-plugin/marketplace.json" >"$stage/.claude-plugin/marketplace.json"
+' "$work/board-src/.claude-plugin/marketplace.json" >"$stage/.claude-plugin/marketplace.json"
 # Claude Code caches an installed plugin by its version, so each release
 # gives every hook plugin a version of its own, or an update keeps old hooks.
 release_tag="${board_commit:0:12}.${attention_commit:0:12}"

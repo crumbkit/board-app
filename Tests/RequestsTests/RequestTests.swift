@@ -75,13 +75,13 @@ final class RequestTests: XCTestCase {
   func testTheInboxListsNewestFirstAndCountsEachBoard() throws {
     let inbox = Inbox([
       try Self.request(Self.task, asked: 1),
-      try Self.request(Self.review, board: "owner/board-src", asked: 3),
+      try Self.request(Self.review, board: "crumbkit/board", asked: 3),
       try Self.request(Self.control, asked: 2),
     ])
     XCTAssertEqual(inbox.requests.map(\.plugin), ["review", "controls", "tasks"])
-    XCTAssertEqual(inbox.boards.map(\.name), ["owner/board", "owner/board-src"])
-    XCTAssertEqual(inbox.boards.map(\.count), [2, 1])
-    XCTAssertEqual(inbox.requests(in: "owner/board-src").map(\.plugin), ["review"])
+    XCTAssertEqual(inbox.boards.map(\.name), ["crumbkit/board", "owner/board"])
+    XCTAssertEqual(inbox.boards.map(\.count), [1, 2])
+    XCTAssertEqual(inbox.requests(in: "crumbkit/board").map(\.plugin), ["review"])
     XCTAssertEqual(inbox.requests(in: nil).count, 3)
   }
 

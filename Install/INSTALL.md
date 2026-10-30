@@ -31,7 +31,7 @@ ask the owner before you run it.
 ## Before you run it
 
 - `uv` must be on `PATH`, and so must `~/.local/bin`.
-- It needs the network, and access to the private board repository on
+- It needs the network, and access to the crumbkit/board repository on
   GitHub, which attention fetches a package from.
 - Check what is installed now: `board --version`, and
   `ls -l ~/.local/share/board/plugins`.
@@ -49,5 +49,5 @@ ask the owner before you run it.
 
 - Check with `board plugin list --fields name,description`.
 - Older releases in `~/.local/share/board/releases`
-  and the clone at `~/.local/share/board/src/board` can be deleted once the
+  and the old source clone under `~/.local/share/board/src/` can be deleted once the
   owner agrees.
