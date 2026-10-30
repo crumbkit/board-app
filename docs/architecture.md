@@ -38,6 +38,6 @@
 - `bin/build-apps`: builds both apps unsigned, as on a fresh clone. CI runs
   it.
 - `bin/install-phone`, `bin/install-mac`: build, sign and install an app.
+- `bin/dmg`: builds a Developer ID signed `Board.dmg` of the Mac app
+  ([Board.dmg](bundle-dmg.md)).
 - `bin/setup`: walks the owner through first-time setup.
-
-Not built: the bundle of `board`, plugins, skills and hooks.

@@ -1,0 +1,152 @@
+#!/bin/sh
+# Builds Board.dmg for installing Board.app on another Mac. The app carries
+# the Board release from bin/bundle, and it, every executable in that release
+# and the disk image are signed with the team's Developer ID. When the
+# notarytool keychain profile NOTARY_PROFILE (default board-notary) works,
+# the image is notarised and the ticket stapled to it. When the default
+# profile does not work, that step is skipped and the command that stores it
+# is printed; a profile named in NOTARY_PROFILE that does not work is an error.
+#
+#   bin/dmg [board-ref] [attention-ref]   the refs go to bin/bundle
+#
+# It writes .build/dmg/Board-<version>-<release id>.dmg, and checks the
+# signatures, the hardened runtime and that the bundled board runs from the
+# mounted image. Any failed check stops it with an error.
+set -eu
+cd "$(dirname "$0")/.."
+team=78HLU526FA
+# A profile named in NOTARY_PROFILE must work; the default may be absent.
+profile_named=${NOTARY_PROFILE:+yes}
+profile=${NOTARY_PROFILE:-board-notary}
+out=.build/dmg
+
+fail() {
+  echo "bin/dmg: $*" >&2
+  exit 1
+}
+
+security find-identity -v -p codesigning | grep -q "\"Developer ID Application: .*($team)\"" ||
+  fail "no Developer ID Application identity for team $team is in the keychain"
+
+bin/bundle "$@"
+bin/project
+
+rm -rf -- "$out"
+mkdir -p "$out"
+echo "Archiving Board-macOS."
+xcodebuild -project Board.xcodeproj -scheme Board-macOS -configuration Release \
+  -destination 'generic/platform=macOS' -derivedDataPath "$out/derived" \
+  -archivePath "$out/Board.xcarchive" -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet archive ||
+  fail "the archive failed. If the error is \"No Account for Team $team\", sign in to Xcode with an Apple ID in that team, under Xcode > Settings > Accounts, and run bin/dmg again"
+
+cat >"$out/ExportOptions.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key><string>developer-id</string>
+  <key>teamID</key><string>$team</string>
+  <key>signingStyle</key><string>automatic</string>
+</dict>
+</plist>
+EOF
+echo "Exporting for Developer ID."
+xcodebuild -exportArchive -archivePath "$out/Board.xcarchive" \
+  -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out/export" \
+  -allowProvisioningUpdates -quiet ||
+  fail "the export for Developer ID failed. If no Developer ID profile was found, check that team $team has a Developer ID Application certificate and that Xcode is signed in to it"
+app="$out/export/Board.app"
+[ -d "$app" ] || fail "the export wrote no Board.app"
+# Re-sign with the certificate the export used, by its hash, because the
+# Developer ID profile in the app lists only that one; after a renewal the
+# keychain may hold another.
+codesign -d --extract-certificates="$out/cert" "$app" 2>/dev/null
+identity=$(shasum -a 1 "$out/cert0" | awk '{ print toupper($1) }')
+security find-identity -v -p codesigning | grep -q "$identity" ||
+  fail "the identity the export signed with, $identity, is not in the keychain"
+release="$app/Contents/Resources/board"
+[ -f "$release/release.json" ] || fail "the app carries no Board release"
+
+# Export signs the app but treats the release as plain resources. Notarisation
+# refuses an executable inside that is unsigned or lacks the hardened runtime,
+# so each one is signed here, and then the app again, which seals them in.
+find "$release" -type f -exec sh -c 'file -b "$1" | grep -q "^Mach-O"' sh {} \; -print >"$out/executables"
+[ -s "$out/executables" ] || fail "found no executables in the Board release"
+while IFS= read -r exe; do
+  codesign --force --sign "$identity" --options runtime --timestamp "$exe"
+done <"$out/executables"
+codesign -d --entitlements - --xml "$app" >"$out/entitlements.plist"
+[ -s "$out/entitlements.plist" ] || fail "the exported app has no entitlements, so re-signing it would drop iCloud"
+codesign --force --sign "$identity" --options runtime --timestamp \
+  --entitlements "$out/entitlements.plist" "$app"
+
+codesign --verify --deep --strict --verbose=2 "$app"
+while IFS= read -r exe; do
+  details=$(codesign -dv --verbose=2 "$exe" 2>&1)
+  echo "$details" | grep -q "^Authority=Developer ID Application: .*($team)" ||
+    fail "$exe is not signed with the Developer ID"
+  echo "$details" | grep -q '^CodeDirectory .*flags=.*(runtime)' ||
+    fail "$exe lacks the hardened runtime"
+done <"$out/executables"
+
+version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+id=$(plutil -extract id raw -o - "$release/release.json")
+# The image keeps a temporary name until every check below has passed.
+unfinished="$out/unfinished.dmg"
+mkdir "$out/volume"
+ditto "$app" "$out/volume/Board.app"
+ln -s /Applications "$out/volume/Applications"
+hdiutil create -quiet -volname Board -srcfolder "$out/volume" -format UDZO "$unfinished"
+codesign --sign "$identity" --timestamp "$unfinished"
+
+notarised=no
+skipped=
+if ! skipped=$(xcrun notarytool history --keychain-profile "$profile" 2>&1 >/dev/null); then
+  [ "$profile_named" != yes ] || fail "notarytool cannot use the keychain profile $profile: $skipped"
+  # Only a missing default profile skips notarisation; any other error stops.
+  case "$skipped" in
+    *"No Keychain password item found"*) ;;
+    *) fail "notarytool could not check the keychain profile $profile: $skipped" ;;
+  esac
+else
+  skipped=
+  echo "Notarising with the keychain profile $profile."
+  xcrun notarytool submit "$unfinished" --keychain-profile "$profile" --wait >"$out/notary.log" ||
+    { cat "$out/notary.log" >&2; fail "notarytool submit failed"; }
+  cat "$out/notary.log"
+  submission=$(awk '/^ *id:/ { print $2; exit }' "$out/notary.log")
+  grep -q 'status: Accepted' "$out/notary.log" ||
+    fail "Apple did not accept submission $submission; run: xcrun notarytool log $submission --keychain-profile $profile"
+  xcrun stapler staple "$unfinished" || fail "stapling the notarisation ticket to the image failed"
+  notarised=yes
+fi
+
+# Check what a second Mac will get: the image, the app and the release in it.
+mount=$(mktemp -d)
+cleanup() {
+  hdiutil detach -quiet "$mount" 2>/dev/null || true
+  rmdir "$mount" 2>/dev/null || true
+}
+# INT and TERM exit, which runs the EXIT trap once.
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$mount" "$unfinished"
+mounted="$mount/Board.app"
+codesign --verify --deep --strict "$mounted"
+"$mounted/Contents/Resources/board/bin/board" --version
+if [ "$notarised" = yes ]; then
+  spctl -a -t open --context context:primary-signature -v "$unfinished"
+  spctl -a -vv "$mounted"
+fi
+
+if [ "$notarised" = yes ]; then
+  dmg="$out/Board-$version-$id.dmg"
+else
+  dmg="$out/Board-$version-$id-unnotarised.dmg"
+fi
+mv "$unfinished" "$dmg"
+echo "Wrote $dmg ($(du -h "$dmg" | cut -f1 | tr -d ' '))."
+if [ "$notarised" = no ]; then
+  echo "Notarisation was skipped: notarytool could not use the keychain profile $profile: $skipped"
+  echo "Store the profile once with: xcrun notarytool store-credentials $profile --apple-id <apple-id> --team-id $team"
+fi

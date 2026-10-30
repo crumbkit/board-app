@@ -7,6 +7,8 @@ installs it with `install`; `INSTALL.md` beside it tells the agent how.
   how it is tested.
 - [Installing a release](bundle-install.md): where `install` puts each part,
   and what it checks first.
+- [Building Board.dmg](bundle-dmg.md): `bin/dmg`, which signs the app and its
+  release with the Developer ID for another Mac.
 
 ## What a release holds
 
@@ -22,5 +24,6 @@ installs it with `install`; `INSTALL.md` beside it tells the agent how.
 
 ## Not built
 
-- Bundled binaries are not signed with the app's identity.
+- `bin/install-mac` does not sign the bundled binaries with the app's
+  identity. Only `bin/dmg` signs them.
 - Nothing checks that a newer release is in a newer app.

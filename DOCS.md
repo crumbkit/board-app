@@ -9,6 +9,9 @@ The map. Each doc describes what is built; "Not built" lines say what is not.
 - [Devices](docs/devices.md): pairing, revoking and a lost device.
 - [TestFlight](docs/testflight.md): sending the iPhone app through TestFlight, and what the owner sets up first.
 - [Bundle](docs/bundle.md): the Board release the Mac app carries, and how it installs.
+  - [Building a release](docs/bundle-building.md): `bin/bundle`, what it needs, and how it is tested.
+  - [Installing a release](docs/bundle-install.md): where `install` puts each part.
+  - [Board.dmg](docs/bundle-dmg.md): `bin/dmg`, a signed disk image of the app for another Mac.
 - [Launcher](docs/launcher.md): the search panel on the Mac, its keys and its safety rules.
   - [Contract](docs/launcher-contract.md): what a provider prints, with a full example.
   - [Providers](docs/launcher-providers.md): the config file, writing a provider, and the example.
