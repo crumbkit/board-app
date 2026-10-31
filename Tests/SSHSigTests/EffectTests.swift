@@ -56,6 +56,24 @@ final class EffectTests: XCTestCase {
             .utf8)))
   }
 
+  /// Board writes `asked` into every new pending effect. It is read, and it
+  /// changes neither the id nor the statement the owner signs.
+  func testAskedIsReadAndLeavesTheIdAndStatementAlone() throws {
+    let base =
+      #""$type": "board/effect/v1", "board": "/b", "plugin": "p", "op": "p.do", "path": "/x""#
+    let plain = try Effect(json: Data("{\(base)}".utf8))
+    let asked = try Effect(
+      json: Data("{\(base), \"asked\": \"2026-10-30T22:44:54.102864Z\"}".utf8))
+    XCTAssertEqual(asked.asked, "2026-10-30T22:44:54.102864Z")
+    XCTAssertNil(plain.asked)
+    XCTAssertEqual(asked.id, plain.id)
+    XCTAssertEqual(asked.approval, plain.approval)
+    XCTAssertNil(try Effect(json: Data("{\(base), \"asked\": null}".utf8)).asked)
+    XCTAssertThrowsError(try Effect(json: Data("{\(base), \"asked\": 1}".utf8))) {
+      XCTAssertEqual(($0 as? Effect.Malformed)?.field, "asked")
+    }
+  }
+
   func testAPriorBlobIsCheckedByTheIdGitGivesIt() {
     // `printf 'hello\n' | git hash-object --stdin`
     XCTAssertEqual(gitBlobID(Data("hello\n".utf8)), "ce013625030ba8dba906f756967f9e9ca394464a")

@@ -17,6 +17,10 @@ public struct Effect: Equatable, Sendable {
   public let prior: String?
   public let record: JSONValue?
   public let text: String?
+  /// When Board wrote the pending effect, in RFC 3339 UTC, or nil for an
+  /// effect written before Board recorded it. It is outside the id and the
+  /// statement.
+  public let asked: String?
 
   public struct Malformed: Error, Equatable {
     public let field: String
@@ -28,7 +32,9 @@ public struct Effect: Equatable, Sendable {
     guard case .object(let members) = try JSONValue.parse(json) else {
       throw Malformed(field: "$type")
     }
-    let known = ["$type", "board", "plugin", "op", "path", "digest", "prior", "record", "text"]
+    let known = [
+      "$type", "board", "plugin", "op", "path", "digest", "prior", "record", "text", "asked",
+    ]
     if let unknown = members.first(where: { member in
       !known.contains { $0.utf8.elementsEqual(member.key.utf8) }
     }) {
@@ -53,6 +59,7 @@ public struct Effect: Equatable, Sendable {
     path = try required("path")
     prior = try optional("prior")
     text = try optional("text")
+    asked = try optional("asked")
     record = object["record"].flatMap { $0 == .null ? nil : $0 }
     if let digest = try optional("digest") {
       let hex = digest.dropFirst("sha256:".count)
