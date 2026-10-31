@@ -1,13 +1,16 @@
-// Shares the personal board's pending effects with the phone, and hands the
-// phone's answers to `board answer`. It has no window of its own: it runs
-// while Board's window is open on the Mac. Board checks every signature.
+// Shares the personal board's pending effects and their threads with the
+// phone, hands the phone's answers to `board answer`, and puts its replies in
+// the personal board. It has no window of its own: it runs while Board's
+// window is open on the Mac. Board checks every signature.
 import Foundation
+import Requests
 import SSHSig
 
 @MainActor
 final class RequestRelay {
   private let cloud = RequestCloud()
   private let home = FileManager.default.homeDirectoryForCurrentUser
+  private var board: URL { home.appendingPathComponent(".local/bin/board") }
 
   /// Shares and answers every 10 seconds until the app quits. A build that
   /// may not use iCloud says so once and shares nothing.
@@ -26,6 +29,10 @@ final class RequestRelay {
           // An answer whose request is no longer pending is dropped unread.
           let delivered = pending[answer.id] != nil ? await deliver(answer) : false
           try await cloud.finish(answer.id, answered: delivered)
+        }
+        // A reply Board could not take stays in iCloud and is tried again.
+        for reply in try await cloud.replies() where await put(reply) {
+          try await cloud.finish(reply)
         }
       } catch {
         log("Board could not share requests: \(error.localizedDescription)")
@@ -60,7 +67,8 @@ final class RequestRelay {
         effect: bytes, boardName: await boardName(board),
         asked: Date(timeIntervalSince1970: TimeInterval(seconds.trimmed) ?? 0),
         prior: await prior(effect, in: board), current: await current(effect, in: board),
-        currentContent: effect.content == nil ? await currentContent(effect, in: board) : nil)
+        currentContent: effect.content == nil ? await currentContent(effect, in: board) : nil,
+        thread: await thread(effect.id))
     }
     return requests
   }
@@ -105,10 +113,33 @@ final class RequestRelay {
     return nil
   }
 
+  /// What `board call requests.thread` prints for the effect, or nil when
+  /// Board refuses, as a Board without the requests plugin does.
+  private func thread(_ id: String) async -> Data? {
+    try? await runProcess(
+      board, ["--personal", "call", "requests.thread", "--effect", id, "--json"])
+  }
+
+  /// Puts the phone's reply in the personal board as the owner. It is outside
+  /// `effects/`, so it needs no signature, and it answers nothing. True when
+  /// the board holds the reply, including when an earlier put stored it and
+  /// Board refuses this one with `board::put::stale`.
+  private func put(_ reply: PhoneReply) async -> Bool {
+    do {
+      _ = try await runProcess(
+        board, ["--personal", "put", reply.path, "--expect", "none"], input: reply.record)
+      return true
+    } catch let failure as ProcessFailure where failure.output.contains("board::put::stale") {
+      return true
+    } catch {
+      log("board put \(reply.path) failed: \(error.localizedDescription)")
+      return false
+    }
+  }
+
   /// Runs `board --personal answer`, with the phone's signature on stdin for
   /// an approval. True when Board recorded the answer.
   private func deliver(_ answer: RequestAnswer) async -> Bool {
-    let board = home.appendingPathComponent(".local/bin/board")
     var arguments = ["--personal", "answer", answer.id]
     var input: Data?
     if answer.approve {

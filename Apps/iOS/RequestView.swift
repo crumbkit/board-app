@@ -1,88 +1,159 @@
-// One request: what a plugin asked to do, so the owner can approve it with
-// Face ID or Touch ID, or refuse it. It follows the signed-off Request detail
-// v2 design: an inset grouped list of the changed lines or fields in the
-// compact layout, a two-up diff in the regular layout, the summary on the
-// lower half in the tabletop pose, and Refuse and Approve in the bottom
-// toolbar.
+// One request as a thread: the request at the top, then the owner's replies
+// and the plugin's revised versions, oldest first. It follows the signed-off
+// chat design: the screen opens scrolled to the latest version, the eyebrow
+// and title stay at the top, and the reply field stays at the bottom between
+// Refuse and Approve. Beside the request list on the open Duo in landscape, a
+// side strip holds Back, Approve, Raw and Refuse instead.
 import Requests
 import SwiftUI
 
 struct RequestView: View {
   let request: Request
   let requests: PhoneRequests
-  /// The diff rows, worked out once per request.
-  private let rows: [DiffRow]?
+  /// Closes the thread from the side strip. Nil outside the layout that sets
+  /// the thread beside the request list.
+  var back: (() -> Void)?
   @State private var signing = Fixture.sheet == "sign"
   @State private var refusing: Request?
-  @State private var halfOpen = false
-  /// Whether the bars sit in a side strip, as on the closed Duo, where
-  /// Approve shows its symbol alone.
-  @State private var inStrip = false
   @State private var failure: String?
-  @Environment(\.horizontalSizeClass) private var sizeClass
+  @State private var replyFailure: String?
+  @State private var draft = ""
 
-  init(request: Request, requests: PhoneRequests) {
+  init(request: Request, requests: PhoneRequests, back: (() -> Void)? = nil) {
     self.request = request
     self.requests = requests
-    rows = request.lineRows
+    self.back = back
     if Fixture.sheet == "refuse" { _refusing = State(initialValue: request) }
   }
 
   var body: some View {
-    GeometryReader { geometry in
-      let portrait = geometry.size.height > geometry.size.width
-      if sizeClass == .regular && halfOpen && portrait {
-        tabletop(geometry)
-      } else if sizeClass == .regular {
-        regular(landscape: !portrait)
+    let thread = requests.thread(for: request)
+    let canApprove = thread.isApprovable(request) && !request.isStale && !answering
+    Group {
+      if back != nil {
+        HStack(spacing: 0) {
+          conversation(thread, canApprove: canApprove)
+          strip(canApprove: canApprove)
+        }
+        .background(Palette.ground)
+        .toolbar(.hidden, for: .navigationBar)
       } else {
-        compact
+        conversation(thread, canApprove: canApprove)
+          .navigationTitle(request.heading)
+          .navigationBarTitleDisplayMode(.inline)
+          .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+              Button("What You Sign", systemImage: "signature") { signing = true }
+            }
+          }
       }
     }
-    .onGeometryChange(for: Bool.self) { geometry in
-      // The closed Duo's outer display is a compact width far wider than an
-      // iPhone's, because the strip takes its side.
-      let size = geometry.size
-      return size.height > size.width && size.width / size.height > 0.6
-    } action: {
-      inStrip = $0
-    }
-    .navigationTitle(request.heading)
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar { toolbar }
-    .background(HingeReader(halfOpen: $halfOpen))
     .sheet(isPresented: $signing) { WhatYouSign(request: request) }
     .refuseAlert($refusing, requests: requests)
     .alert(
       "Board could not send your answer", isPresented: .constant(failure != nil),
-      actions: { Button("OK") { failure = nil } }, message: { Text(failure ?? "") })
+      actions: { Button("OK") { failure = nil } }, message: { Text(failure ?? "") }
+    )
+    .alert(
+      "Board could not send your reply", isPresented: .constant(replyFailure != nil),
+      actions: { Button("OK") { replyFailure = nil } }, message: { Text(replyFailure ?? "") })
+  }
+
+  /// The versions and replies, opening at the bottom, under the fixed title
+  /// and above the reply field.
+  private func conversation(_ thread: RequestThread, canApprove: Bool) -> some View {
+    ScrollView {
+      VStack(spacing: 22) {
+        ForEach(thread.items) { item in
+          switch item {
+          case .version(let version):
+            VersionView(
+              version: version, request: version.id == request.id ? request : version.request,
+              shared: requests.shared)
+          case .reply(let reply):
+            ReplyBubble(reply: reply, waiting: requests.isWaiting(reply, in: request))
+          }
+        }
+      }
+      .padding(.horizontal, 20)
+      .padding(.vertical, 16)
+    }
+    .defaultScrollAnchor(Fixture.scrolledUp ? .top : .bottom)
+    .background(Palette.ground)
+    .safeAreaInset(edge: .top, spacing: 0) {
+      ThreadHeader(request: request, versions: thread.versions.count)
+    }
+    .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(canApprove: canApprove) }
   }
 
   // MARK: Actions
 
-  @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-    ToolbarItem(placement: .topBarTrailing) {
-      Button("What You Sign", systemImage: "signature") { signing = true }
-    }
-    ToolbarItemGroup(placement: .bottomBar) {
-      Button("Refuse", systemImage: "xmark") { refusing = request }
-        .disabled(answering)
-      Spacer()
-      Button(action: approve) {
-        // A bottom bar shows a Label's symbol alone, and Approve needs its
-        // word there.
-        if inStrip || sizeClass == .regular {
-          Label("Approve", systemImage: PhoneKey.biometry.symbol)
-        } else {
-          HStack(spacing: 6) {
-            Image(systemName: PhoneKey.biometry.symbol)
-            Text("Approve")
-          }
-        }
+  /// Refuse, the reply field and Approve; the field alone beside the strip.
+  private func bottomBar(canApprove: Bool) -> some View {
+    HStack(spacing: 10) {
+      if back == nil {
+        RoundButton(title: "Refuse", symbol: "xmark") { refusing = request }
+          .disabled(answering)
       }
-      .buttonStyle(.borderedProminent)
-      .disabled(request.isStale || answering)
+      replyField
+      if back == nil {
+        RoundButton(
+          title: "Approve", symbol: PhoneKey.biometry.symbol, prominent: true, action: approve
+        )
+        .disabled(!canApprove)
+      }
     }
+    .padding(.horizontal, 14)
+    .padding(.top, 20)
+    .padding(.bottom, 8)
+    .background(
+      LinearGradient(
+        stops: [
+          .init(color: Palette.ground.opacity(0), location: 0),
+          .init(color: Palette.ground, location: 0.45),
+        ],
+        startPoint: .top, endPoint: .bottom))
+  }
+
+  private var replyField: some View {
+    HStack(spacing: 6) {
+      TextField("Reply to \(request.plugin)", text: $draft)
+        .submitLabel(.send)
+        .onSubmit(sendReply)
+      if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        Button(action: sendReply) {
+          Image(systemName: "arrow.up.circle.fill").font(.system(size: 30))
+            .foregroundStyle(Palette.action)
+        }
+        .accessibilityLabel("Send Reply")
+      }
+    }
+    .font(.system(size: 17))
+    .padding(.leading, 16)
+    .padding(.trailing, 8)
+    .frame(minHeight: 46)
+    .background(Capsule().fill(Palette.row).shadow(color: .black.opacity(0.14), radius: 3, y: 1))
+  }
+
+  /// Back and Approve at the top of the strip, Raw and Refuse at the bottom.
+  private func strip(canApprove: Bool) -> some View {
+    VStack(spacing: 18) {
+      RoundButton(title: "Back", symbol: "chevron.left", size: 48, labelled: true) { back?() }
+      RoundButton(
+        title: "Approve", symbol: PhoneKey.biometry.symbol, size: 56, prominent: true,
+        labelled: true, action: approve
+      )
+      .disabled(!canApprove)
+      Spacer()
+      RoundButton(title: "Raw", symbol: "signature", size: 48, labelled: true) { signing = true }
+      RoundButton(title: "Refuse", symbol: "xmark", size: 48, labelled: true) {
+        refusing = request
+      }
+      .disabled(answering)
+    }
+    .padding(.top, 16)
+    .padding(.bottom, 20)
+    .frame(width: 84)
   }
 
   /// Whether an answer to this request is on its way.
@@ -100,317 +171,294 @@ struct RequestView: View {
     }
   }
 
-  // MARK: Layouts
+  /// Keeps the draft when the reply fails, so a second try has it.
+  private func sendReply() {
+    let text = draft
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    draft = ""
+    Task {
+      do {
+        try await requests.reply(to: request, text: text)
+      } catch {
+        draft = text
+        replyFailure = error.localizedDescription
+      }
+    }
+  }
+}
 
-  private var compact: some View {
-    List {
-      if case .action = request.kind {
-        summary
-        decision
-        report
-      } else if request.isStale {
-        summary
-        Section {
+/// The plugin, board and version count over the thing's name, fixed at the
+/// top of the thread.
+struct ThreadHeader: View {
+  let request: Request
+  let versions: Int
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(
+        ([request.plugin, request.boardName] + (versions > 1 ? ["\(versions) versions"] : []))
+          .joined(separator: " · ").uppercased()
+      )
+      .font(.footnote.weight(.semibold))
+      .kerning(0.2)
+      .foregroundStyle(Palette.secondary)
+      Text(request.name).font(.title2.bold()).lineLimit(2)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 20)
+    .padding(.top, 8)
+    .padding(.bottom, 12)
+    .background(Palette.ground.opacity(0.94))
+    .background(.ultraThinMaterial)
+    .overlay(alignment: .bottom) { Divider() }
+  }
+}
+
+/// A round button: white with a shadow, or blue when prominent, with its
+/// title under it in the side strip.
+struct RoundButton: View {
+  let title: String
+  let symbol: String
+  var size: CGFloat = 46
+  var prominent = false
+  var labelled = false
+  let action: () -> Void
+  @Environment(\.isEnabled) private var enabled
+
+  var body: some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: symbol)
+          .font(.system(size: size * 0.38, weight: .semibold))
+          .foregroundStyle(prominent ? Color.white : Color.primary)
+          .frame(width: size, height: size)
+          .background(
+            Circle().fill(prominent ? Palette.action : Palette.row)
+              .shadow(color: .black.opacity(0.14), radius: 3, y: 1))
+        if labelled { Text(title).font(.caption2.weight(.semibold)).foregroundStyle(.primary) }
+      }
+      .opacity(enabled ? 1 : 0.4)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(title)
+  }
+}
+
+/// One version: its label, what the plugin wants, what changes, and the raw
+/// change one tap away. A replaced version is greyed.
+struct VersionView: View {
+  let version: RequestThread.Version
+  /// The version as the screen words it: the open request itself for its own
+  /// version.
+  let request: Request
+  let shared: Date?
+
+  var body: some View {
+    let old = !version.isLatest
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(
+          "\(request.plugin) · version \(version.number)"
+            + (version.asked.map { " · " + askedLabel($0) } ?? "")
+        )
+        .foregroundStyle(Palette.secondary)
+        Spacer(minLength: 8)
+        Text(status).foregroundStyle(version.isLatest ? Palette.action : Palette.secondary)
+      }
+      .font(.footnote.weight(.semibold))
+      Text(request.sentence)
+        .font(.system(size: 18))
+        .foregroundStyle(old ? Palette.secondary : Palette.text)
+      if let answer = version.answer {
+        Text(
+          answer.approved
+            ? "You approved it." : "You refused it\(answer.reason.map { ": " + $0 } ?? "")."
+        )
+        .font(.footnote)
+        .foregroundStyle(Palette.secondary)
+      }
+      Changes(request: request, latest: version.isLatest, shared: shared)
+        .opacity(old ? 0.6 : 1)
+    }
+  }
+
+  private var status: String {
+    if version.isLatest { return "Latest" }
+    if let next = version.replacedBy { return "Replaced by version \(next)" }
+    if let answer = version.answer { return answer.approved ? "Approved" : "Refused" }
+    return ""
+  }
+}
+
+/// What one version changes, reusing the request screen's diff: the changed
+/// fields or lines on a white card, what stays the same, and the whole file.
+struct Changes: View {
+  let request: Request
+  let latest: Bool
+  let shared: Date?
+
+  var body: some View {
+    let rows = request.lineRows
+    VStack(alignment: .leading, spacing: 10) {
+      if case .action(let verb) = request.kind {
+        card {
+          Text(
+            "\(request.plugin) can \(verb) from this \(request.target) whenever it runs. It will not ask again until you take the approval back."
+          )
+          .padding(16)
+        }
+        if let content = request.currentContent {
+          heading("What it would \(verb) now")
+          card {
+            Text(String(decoding: content, as: UTF8.self)).textSelection(.enabled).padding(16)
+          }
+          note(
+            "Read from the board\(shared.map { " at " + $0.formatted(date: .omitted, time: .shortened) } ?? ""). This text is not part of what you sign. \(request.limits)"
+          )
+        } else {
+          note(request.limits)
+        }
+      } else if latest && request.isStale {
+        card {
           Label {
             Text("This \(request.noun) changed after \(request.plugin) asked.")
           } icon: {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
           }
-        } footer: {
-          Text(
-            "An approval fits only the version \(request.plugin) saw, so it would not let \(request.plugin) write. Refuse, and \(request.plugin) can ask again with the current version."
-          )
+          .padding(16)
         }
-        changes(stale: true)
-      } else if rows == nil {
-        priorMissing
-      } else {
-        summary
-        changes(stale: false)
-        wholeFile
-      }
-    }
-    .listStyle(.insetGrouped)
-  }
-
-  @ViewBuilder private func regular(landscape: Bool) -> some View {
-    if case .action = request.kind {
-      let layout =
-        landscape
-        ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
-      layout {
-        List {
-          summary
-          decision
-        }
-        List { report }
-      }
-      .listStyle(.insetGrouped)
-    } else if let rows, !request.isStale {
-      TwoUp(request: request, rows: rows) {
-        VStack(alignment: .leading, spacing: 4) {
-          summaryText
-          Text("\(request.allows) \(request.limits)")
-            .font(.footnote).foregroundStyle(.secondary)
-        }
-        .padding(16)
-      }
-    } else {
-      compact
-    }
-  }
-
-  /// The change above the fold, facing the owner, and the summary on the
-  /// half that lies on the desk, above the bottom toolbar. The fold is the
-  /// middle of the whole screen, not of the safe area.
-  private func tabletop(_ geometry: GeometryProxy) -> some View {
-    let insets = geometry.safeAreaInsets
-    let fold = (geometry.size.height + insets.top + insets.bottom) / 2 - insets.top
-    return VStack(spacing: 0) {
-      Group {
-        if case .action = request.kind {
-          List { report }.listStyle(.insetGrouped)
-        } else if let rows, !request.isStale {
-          TwoUp(request: request, rows: rows, headings: false, startAtChange: true) {
-            EmptyView()
-          }
-        } else {
-          compact
-        }
-      }
-      .frame(height: fold)
-      List {
-        if case .action = request.kind {
-          decision
-        } else {
-          Section {
-            VStack(alignment: .leading, spacing: 2) {
-              Text(request.name).font(.headline)
-              Text(request.sentence)
-              Text(
-                rows.map { "\(LineDiff.summary($0)). Scroll the upper half for the rest." } ?? ""
-              )
-              .foregroundStyle(.secondary)
+        note(
+          "An approval fits only the version \(request.plugin) saw, so it would not let \(request.plugin) write. Refuse, and \(request.plugin) can ask again with the current version."
+        )
+      } else if let fields = request.fields {
+        heading(count(fields.changed.count, "field") + " change")
+        card {
+          VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(fields.changed.enumerated()), id: \.offset) { index, row in
+              if index > 0 { Divider().padding(.leading, 16) }
+              VStack(alignment: .leading, spacing: 3) {
+                Text(row.key).font(.system(size: 17))
+                fieldChange(row).font(.system(size: 15))
+              }
+              .padding(.horizontal, 16)
+              .padding(.vertical, 12)
             }
-          } footer: {
-            Text("\(request.allows) \(request.limits)")
           }
         }
-      }
-      .listStyle(.insetGrouped)
-      .frame(height: geometry.size.height - fold)
-    }
-  }
-
-  // MARK: Parts
-
-  /// The thing's name, what the plugin wants, and where and when it asked.
-  private var summary: some View {
-    Section { summaryText }
-  }
-
-  private var summaryText: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(request.name).font(.headline)
-      Text(request.sentence)
-      Text("\(request.boardName) · asked \(askedLabel(request.asked))")
-        .foregroundStyle(.secondary)
-    }
-  }
-
-  /// What a plain action lets the plugin do, in plain words.
-  private var decision: some View {
-    Section {
-      Text(
-        "\(request.plugin) can \(verb) from this \(request.target) whenever it runs. It will not ask again until you take the approval back."
-      )
-    } header: {
-      Text("If you approve")
-    } footer: {
-      Text(request.limits)
-    }
-  }
-
-  /// The file a plain action would use now, read from the board.
-  @ViewBuilder private var report: some View {
-    if let content = request.currentContent {
-      Section {
-        Text(String(decoding: content, as: UTF8.self)).textSelection(.enabled)
-      } header: {
-        Text("What it would \(verb) now")
-      } footer: {
-        Text(
-          "Read from the board\(requests.shared.map { " at " + $0.formatted(date: .omitted, time: .shortened) } ?? ""). This text is not part of what you sign."
+        note(sameNote(fields.same.isEmpty ? nil : fields.same.joined(separator: ", ")))
+      } else if let rows {
+        let changed = rows.filter { !$0.isSame }
+        let total = request.kind == .remove ? rows.count : rows.filter { $0.new != nil }.count
+        heading("\(changed.count) of \(count(total, "line")) change")
+        card {
+          VStack(spacing: 0) {
+            ForEach(Array(changed.enumerated()), id: \.offset) { _, row in
+              if let old = row.old { DiffLine(number: old.number, text: old.text, side: .removed) }
+              if let new = row.new { DiffLine(number: new.number, text: new.text, side: .added) }
+            }
+          }
+          .padding(.vertical, 8)
+        }
+        let same = rows.count - changed.count
+        note(sameNote(same > 0 ? "the other \(count(same, "line"))" : nil))
+      } else {
+        let blob = request.effect.prior.map { String($0.prefix(7)) } ?? ""
+        note(
+          request.kind == .remove
+            ? "Board could not fetch the file this removes (blob \(blob)) from your Mac, so it cannot show it. What you sign is unchanged."
+            : "Board could not fetch the old version (blob \(blob)) from your Mac, so it cannot show what changes. What you sign is unchanged."
         )
       }
-    }
-  }
-
-  private var verb: String {
-    if case .action(let verb) = request.kind { return verb }
-    return "write"
-  }
-
-  /// The changed lines, or for a record one section per changed field.
-  @ViewBuilder private func changes(stale: Bool) -> some View {
-    let footer = stale ? "" : "\(request.allows) \(request.limits)"
-    if let fields = request.fields {
-      ForEach(Array(fields.changed.enumerated()), id: \.offset) { index, row in
-        Section {
-          VStack(spacing: 0) {
-            if let old = row.old { DiffLine(number: nil, text: old, side: .removed) }
-            if let new = row.new { DiffLine(number: nil, text: new, side: .added) }
+      if case .action = request.kind {
+      } else if let rows, !rows.isEmpty {
+        card {
+          NavigationLink {
+            WholeFile(request: request, rows: rows)
+          } label: {
+            HStack {
+              Text("Show the raw change").foregroundStyle(Palette.text)
+              Spacer()
+              Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+            }
+            .font(.system(size: 17))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
           }
-          .listRowInsets(EdgeInsets())
-        } header: {
-          Text(row.key).textCase(nil)
-        } footer: {
-          if index == fields.changed.count - 1 {
-            let same =
-              fields.same.isEmpty ? "" : "Unchanged: \(fields.same.joined(separator: ", ")).\n"
-            Text(same + footer)
-          }
-        }
-      }
-    } else if let rows {
-      let changed = rows.filter { !$0.isSame }
-      let total = request.kind == .remove ? rows.count : rows.filter { $0.new != nil }.count
-      Section {
-        VStack(spacing: 0) {
-          ForEach(Array(changed.enumerated()), id: \.offset) { _, row in
-            if let old = row.old { DiffLine(number: old.number, text: old.text, side: .removed) }
-            if let new = row.new { DiffLine(number: new.number, text: new.text, side: .added) }
-          }
-        }
-        .listRowInsets(EdgeInsets())
-      } header: {
-        Text(
-          stale
-            ? "\(changed.count) lines change from the version \(request.plugin) saw"
-            : "\(changed.count) of \(total) lines change")
-      } footer: {
-        if !footer.isEmpty { Text(footer) }
-      }
-    }
-  }
-
-  private var wholeFile: some View {
-    Section {
-      NavigationLink {
-        WholeFile(request: request, rows: rows ?? [])
-      } label: {
-        HStack {
-          Text(request.effect.record == nil ? "Whole File" : "Whole Record").layoutPriority(1)
-          Spacer()
-          Text(request.effect.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
         }
       }
     }
   }
 
-  @ViewBuilder private var priorMissing: some View {
-    let blob = request.effect.prior.map { String($0.prefix(7)) } ?? ""
-    Section {
-      summaryText
-    } footer: {
-      Text(
-        request.kind == .remove
-          ? "Board could not fetch the file this removes (blob \(blob)) from your Mac, so it cannot show it. What you sign is unchanged."
-          : "Board could not fetch the old version (blob \(blob)) from your Mac, so this shows the new file alone. What you sign is unchanged."
-      )
+  /// What stays the same, and for the latest version what approving allows.
+  private func sameNote(_ same: String?) -> String {
+    let unchanged = same.map { "Nothing else changes: \($0) stay as they are." } ?? ""
+    let allows = latest ? "\(request.allows) \(request.limits)" : ""
+    return [unchanged, allows].filter { !$0.isEmpty }.joined(separator: " ")
+  }
+
+  private func fieldChange(_ row: FieldRow) -> Text {
+    var text = Text("")
+    if let old = row.old {
+      text = text + Text(old.text).strikethrough().foregroundColor(Palette.secondary)
+      if row.new != nil { text = text + Text(" → ") }
     }
-    if request.kind != .remove {
-      let lines = LineDiff.lines(request.effect.content ?? "")
-      Section("The file after this change · \(lines.count) lines") {
-        VStack(spacing: 0) {
-          ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-            DiffLine(number: index + 1, text: Marked(line), side: .same)
-          }
-        }
-        .listRowInsets(EdgeInsets())
-      }
+    if let new = row.new { text = text + Text(new.text).fontWeight(.semibold) }
+    return text
+  }
+
+  private func count(_ number: Int, _ noun: String) -> String {
+    "\(number) \(noun)\(number == 1 ? "" : "s")"
+  }
+
+  private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    content()
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Palette.row)
+      .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+  }
+
+  private func heading(_ text: String) -> some View {
+    Text(text).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.secondary)
+      .padding(.horizontal, 2)
+  }
+
+  @ViewBuilder private func note(_ text: String) -> some View {
+    if !text.isEmpty {
+      Text(text).font(.footnote).foregroundStyle(Palette.secondary).padding(.horizontal, 2)
     }
   }
 }
 
-/// Before left and after right, row by row, so a changed line sits level with
-/// its old version. A record shows its changed fields the same way.
-struct TwoUp<Header: View>: View {
-  let request: Request
-  let rows: [DiffRow]
-  var headings = true
-  /// Whether to open scrolled to the first changed line.
-  var startAtChange = false
-  @ViewBuilder let header: Header
+/// One of the owner's replies, on the trailing side, with when it was sent.
+struct ReplyBubble: View {
+  let reply: RequestThread.Reply
+  /// Sent from this phone and not yet in the board.
+  let waiting: Bool
 
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(spacing: 0) {
-          header
-          if headings {
-            HStack(spacing: 0) {
-              heading("Before · as it is now")
-              heading("After · if you approve")
-            }
-          }
-          if let fields = request.fields {
-            ForEach(Array(fields.changed.enumerated()), id: \.offset) { _, row in
-              Text(row.key).font(.footnote).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.top, 10)
-              HStack(alignment: .top, spacing: 0) {
-                side(row.old.map { (nil, $0) }, .removed)
-                side(row.new.map { (nil, $0) }, .added)
-              }
-            }
-            if !fields.same.isEmpty {
-              Text("Unchanged: \(fields.same.joined(separator: ", ")).")
-                .font(.footnote).foregroundStyle(.secondary).padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-          } else {
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-              HStack(alignment: .top, spacing: 0) {
-                side(row.old.map { ($0.number, $0.text) }, row.isSame ? .same : .removed)
-                side(row.new.map { ($0.number, $0.text) }, row.isSame ? .same : .added)
-              }
-              .id(index)
-            }
-          }
-        }
+    VStack(spacing: 4) {
+      Text("You" + (reply.sent.map { " · " + askedLabel($0) } ?? ""))
+        .font(.caption)
+        .foregroundStyle(Palette.secondary)
+      HStack {
+        Spacer(minLength: 60)
+        Text(reply.text)
+          .font(.system(size: 16))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 9)
+          .background(Palette.action, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
       }
-      .onAppear {
-        if startAtChange, let first = rows.firstIndex(where: { !$0.isSame }) {
-          proxy.scrollTo(first, anchor: .top)
-        }
+      if waiting {
+        Label("Your Mac saves it to the board when it next shares.", systemImage: "clock")
+          .font(.caption)
+          .foregroundStyle(Palette.secondary)
+          .frame(maxWidth: .infinity, alignment: .trailing)
       }
-    }
-  }
-
-  private func heading(_ title: String) -> some View {
-    Text(title)
-      .font(.footnote)
-      .foregroundStyle(.secondary)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 6)
-      .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  @ViewBuilder private func side(_ line: (number: Int?, text: Marked)?, _ side: DiffLine.Side)
-    -> some View
-  {
-    if let line {
-      DiffLine(number: line.number, text: line.text, side: side)
-    } else {
-      Color.clear.frame(maxWidth: .infinity, minHeight: 1)
     }
   }
 }
 
-/// Every line of the file, the removed and added lines among them.
 struct WholeFile: View {
   let request: Request
   let rows: [DiffRow]
@@ -568,9 +616,11 @@ struct RefuseAlert: ViewModifier {
   }
 }
 
-#Preview("Task") {
+#Preview("Task thread") {
   NavigationStack {
-    RequestView(request: PreviewRequests.task, requests: PhoneRequests(preview: []))
+    RequestView(
+      request: PreviewRequests.task,
+      requests: PhoneRequests(preview: [PreviewRequests.task], threads: PreviewRequests.threads))
   }
 }
 #Preview("Control") {
@@ -586,10 +636,5 @@ struct RefuseAlert: ViewModifier {
 #Preview("Stale") {
   NavigationStack {
     RequestView(request: PreviewRequests.stale, requests: PhoneRequests(preview: []))
-  }
-}
-#Preview("No prior") {
-  NavigationStack {
-    RequestView(request: PreviewRequests.noPrior, requests: PhoneRequests(preview: []))
   }
 }

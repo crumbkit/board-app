@@ -1,7 +1,8 @@
-// Pending effects and their answers in the owner's private iCloud database,
-// zone `Requests` (docs/sync.md). The Mac shares what waits in the personal
-// board; the phone reads it and writes answers; the Mac hands each answer to
-// `board answer` and removes both records.
+// Pending effects, their threads, answers and replies in the owner's private
+// iCloud database, zone `Requests` (docs/sync.md). The Mac shares what waits
+// in the personal board; the phone reads it and writes answers and replies;
+// the Mac hands each answer to `board answer` and each reply to `board put`,
+// and removes the records.
 import CloudKit
 import Foundation
 import Requests
@@ -22,6 +23,9 @@ struct SharedRequest: Sendable {
   let current: String?
   /// For a plain action, the file at its path now, which the action would use.
   var currentContent: Data? = nil
+  /// What `board call requests.thread --json` printed for the effect, or nil
+  /// when the Mac could not read the thread.
+  var thread: Data? = nil
 
   /// The effect, or nil when the bytes are not one. A request whose effect
   /// does not hash to its record's name is never shown.
@@ -43,6 +47,13 @@ struct SharedRequest: Sendable {
         effect: $0, boardName: boardName, asked: asked, priorContent: verifiedPrior,
         current: current, currentContent: currentContent)
     }
+  }
+
+  /// The request's thread, or a thread of the request alone when the Mac
+  /// shared none or it does not describe this request.
+  func thread(for request: Request) -> RequestThread {
+    thread.flatMap { try? RequestThread(report: $0, request: request) }
+      ?? RequestThread(request: request)
   }
 }
 
@@ -110,7 +121,12 @@ struct RequestCloud: Sendable {
     }
     var saving: [CKRecord] = []
     for (id, request) in requests {
-      if let record = existing[id], record["current"] as? String == request.current { continue }
+      let threadBlob = request.thread.map(gitBlobID)
+      if let record = existing[id], record["current"] as? String == request.current,
+        record["threadBlob"] as? String == threadBlob
+      {
+        continue
+      }
       let record = CKRecord(recordType: "Request", recordID: name(id))
       record["effect"] = try asset(request.effect, id + ".effect")
       record["board"] = request.boardName
@@ -118,6 +134,8 @@ struct RequestCloud: Sendable {
       record["prior"] = try asset(request.prior, id + ".prior")
       record["current"] = request.current
       record["currentContent"] = try asset(request.currentContent, id + ".current")
+      record["thread"] = try asset(request.thread, id + ".thread")
+      record["threadBlob"] = threadBlob
       saving.append(record)
     }
     let shared = CKRecord(recordType: "Shared", recordID: name(sharedName))
@@ -164,7 +182,8 @@ struct RequestCloud: Sendable {
       else { continue }
       let request = SharedRequest(
         effect: effect, boardName: board, asked: asked, prior: read(record["prior"]),
-        current: record["current"] as? String, currentContent: read(record["currentContent"]))
+        current: record["current"] as? String, currentContent: read(record["currentContent"]),
+        thread: read(record["thread"]))
       guard let parsed = request.parsed, parsed.id == record.recordID.recordName else { continue }
       requests[parsed.id] = request
     }
@@ -178,6 +197,29 @@ struct RequestCloud: Sendable {
     record["reason"] = answer.reason
     record["signature"] = answer.signature
     try await modify(saving: [record], deleting: [])
+  }
+
+  /// Sends a reply for the Mac to put in the personal board.
+  func reply(_ reply: PhoneReply) async throws {
+    let record = CKRecord(recordType: "Reply", recordID: name(reply.name))
+    for (key, value) in reply.fields { record[key] = value }
+    try await modify(saving: [record], deleting: [])
+  }
+
+  /// Every reply the phone wrote. A record whose name is not the one its
+  /// fields give is left out.
+  func replies() async throws -> [PhoneReply] {
+    try await all().values.compactMap { record in
+      guard record.recordType == "Reply" else { return nil }
+      var fields: [String: String] = [:]
+      for key in ["effect", "text", "sent"] { fields[key] = record[key] as? String }
+      return PhoneReply(name: record.recordID.recordName, fields: fields)
+    }
+  }
+
+  /// Removes a reply once the Mac has tried to put it.
+  func finish(_ reply: PhoneReply) async throws {
+    try await modify(saving: [], deleting: [name(reply.name)])
   }
 
   private func name(_ name: String) -> CKRecord.ID {

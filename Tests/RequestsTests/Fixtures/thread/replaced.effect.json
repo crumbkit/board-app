@@ -1,0 +1,10 @@
+{
+  "$type": "board/effect/v1",
+  "asked": "2026-10-30T18:52:11.000000Z",
+  "board": "/Users/ana/Code/board",
+  "digest": "sha256:08eef820dbac5bd5eb31b80a2dfaf74e4826944d17ad8b68a213a5d0aba41f85",
+  "op": "put",
+  "path": "/tasks/write-the-release-notes.md",
+  "plugin": "tasks",
+  "text": "---\n$type: \"tasks/task/v2\"\ntitle: \"Write the release notes\"\nstatus: \"open\"\ndefer: \"2026-11-02\"\nreviewed: \"2026-10-29\"\n---\n\nCollect the merged pull requests since the last tag.\n"
+}

@@ -18,7 +18,8 @@ let package = Package(
     .executableTarget(name: "attention-sign", dependencies: ["SSHSig"]),
     .testTarget(name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")]),
     .testTarget(name: "PairingTests", dependencies: ["Pairing", "SSHSig"]),
-    .testTarget(name: "RequestsTests", dependencies: ["Requests", "SSHSig"]),
+    .testTarget(
+      name: "RequestsTests", dependencies: ["Requests", "SSHSig"], resources: [.copy("Fixtures")]),
     .testTarget(name: "LauncherTests", dependencies: ["Launcher"], resources: [.copy("Fixtures")]),
     .testTarget(name: "GatesTests"),
   ]

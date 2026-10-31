@@ -12,7 +12,10 @@ struct BoardApp: App {
   var body: some Scene {
     WindowGroup {
       if Fixture.on {
-        InboxView(requests: PhoneRequests(preview: Fixture.requests))
+        InboxView(
+          requests: PhoneRequests(preview: Fixture.requests, threads: PreviewRequests.threads)
+        )
+        .task { await Fixture.turn() }
       } else if paired {
         InboxView(requests: PhoneRequests())
       } else {

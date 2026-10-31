@@ -2,7 +2,8 @@
 // It follows the signed-off Inbox v2 design: a NavigationSplitView with a
 // Boards list and the requests of the chosen board, laid out as Mail lays out
 // mailboxes and messages. The tabletop pose puts the Boards list on the lower
-// half.
+// half. In a regular width in landscape, as on the open Duo, an open request's
+// thread sits on the trailing half beside the request list.
 import Requests
 import SwiftUI
 
@@ -36,11 +37,13 @@ struct InboxView: View {
 
   var body: some View {
     GeometryReader { geometry in
-      // An open request fills the screen and lays out its own tabletop pose.
-      if sizeClass == .regular && halfOpen && geometry.size.height > geometry.size.width
-        && path.isEmpty
-      {
+      let landscape = geometry.size.width > geometry.size.height
+      if sizeClass == .regular && halfOpen && !landscape && path.isEmpty {
         tabletop(geometry)
+      } else if sizeClass == .regular && landscape, let id = path.first,
+        let request = requests.request(id)
+      {
+        beside(request, width: geometry.size.width)
       } else {
         split
       }
@@ -91,6 +94,26 @@ struct InboxView: View {
     }
   }
 
+  /// The request list on the leading half and the open request's thread on
+  /// the trailing half, with its side strip.
+  private func beside(_ request: Request, width: CGFloat) -> some View {
+    HStack(spacing: 0) {
+      NavigationStack {
+        RequestList(
+          requests: requests, shown: shown, refusing: $refusing, selected: request.id,
+          select: { path = [$0] }
+        )
+        .navigationTitle("Requests")
+      }
+      .frame(width: width / 2)
+      Divider()
+      NavigationStack {
+        RequestView(request: request, requests: requests, back: { path = [] })
+      }
+      .id(request.id)
+    }
+  }
+
   private func stack(_ mode: NavigationBarItem.TitleDisplayMode) -> some View {
     NavigationStack(path: $path) {
       RequestList(requests: requests, shown: shown, refusing: $refusing)
@@ -112,6 +135,10 @@ struct RequestList: View {
   let requests: PhoneRequests
   let shown: [Request]
   @Binding var refusing: Request?
+  /// The request whose thread shows beside the list, if any.
+  var selected: String?
+  /// Opens a request beside the list instead of pushing it.
+  var select: ((String) -> Void)?
 
   var body: some View {
     TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -119,8 +146,22 @@ struct RequestList: View {
       List {
         Section {
           ForEach(shown) { request in
-            NavigationLink(value: request.id) {
-              RequestRow(request: request, now: context.date)
+            let row = RequestRow(
+              request: request, versions: requests.thread(for: request).versions.count,
+              now: context.date)
+            Group {
+              if let select {
+                Button {
+                  select(request.id)
+                } label: {
+                  row
+                }
+                .foregroundStyle(.primary)
+                .listRowBackground(
+                  request.id == selected ? Palette.action.opacity(0.12) : nil)
+              } else {
+                NavigationLink(value: request.id) { row }
+              }
             }
             .swipeActions(edge: .trailing) {
               // Not a destructive role, which would remove the row before the
@@ -187,6 +228,8 @@ extension View {
 
 struct RequestRow: View {
   let request: Request
+  /// How many versions its thread has.
+  var versions = 1
   var now = Date()
 
   var body: some View {
@@ -197,7 +240,8 @@ struct RequestRow: View {
         Text(askedLabel(request.asked, now: now)).font(.subheadline).foregroundStyle(.secondary)
       }
       Text(request.sentence).font(.subheadline)
-      Text(request.boardName).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+      Text(request.boardName + (versions > 1 ? " · \(versions) versions" : ""))
+        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
     }
   }
 }

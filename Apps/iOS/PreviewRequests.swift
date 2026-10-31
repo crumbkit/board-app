@@ -1,8 +1,10 @@
-// Requests with real diffs, for previews: a task whose dates move, a control
-// whose budget rises, a plain review action, and a task with a long title.
+// Requests with real diffs, for previews: a task whose dates move, in a
+// thread of two versions and a reply, a control whose budget rises, a plain
+// review action, and a task with a long title.
 import Foundation
 import Requests
 import SSHSig
+import UIKit
 
 enum PreviewRequests {
   static let taskBefore = """
@@ -21,8 +23,53 @@ enum PreviewRequests {
 
     """
 
-  static let taskAfter = taskBefore.replacingOccurrences(of: "2026-10-29", with: "2026-11-02")
+  static let taskAfter = taskBefore.replacingOccurrences(of: "2026-10-29", with: "2026-11-03")
     .replacingOccurrences(of: "2026-10-25", with: "2026-10-29")
+
+  /// The task's first version, which the owner replied to.
+  static let taskFirst = taskAfter.replacingOccurrences(of: "2026-11-03", with: "2026-11-02")
+
+  /// The task's thread: version 1 deferred to Monday, the owner's reply, and
+  /// version 2, the task request, deferred to Tuesday.
+  static var threads: [String: RequestThread] {
+    let task = task
+    let first = String(repeating: "1", count: 64)
+    func asked(_ minutesAgo: Double) -> String {
+      Date().addingTimeInterval(-minutesAgo * 60).formatted(
+        .iso8601.year().month().day().time(includingFractionalSeconds: false)
+          .dateSeparator(.dash).timeSeparator(.colon)) + ".000000Z"
+    }
+    func stamp(_ minutesAgo: Double) -> String {
+      Date().addingTimeInterval(-minutesAgo * 60).formatted(
+        .iso8601.year().month().day().time(includingFractionalSeconds: false)
+          .dateSeparator(.omitted).timeSeparator(.omitted)) + "Z"
+    }
+    func version(_ id: String, _ text: String, _ minutesAgo: Double, latest: Bool) -> [String: Any]
+    {
+      [
+        "id": id, "asked": asked(minutesAgo), "record": NSNull(), "text": text,
+        "pending": true, "latest": latest, "answer": NSNull(),
+      ]
+    }
+    let output: [String: Any] = [
+      "board": task.effect.board, "plugin": "tasks", "op": "put", "path": task.effect.path,
+      "versions": [
+        version(first, taskFirst, 7, latest: false), version(task.id, taskAfter, 1, latest: true),
+      ],
+      "replies": [
+        [
+          "effect": first, "path": "/requests/replies/\(first)/\(stamp(4))",
+          "text": "Monday's full. Defer it to Tuesday instead.",
+        ]
+      ],
+    ]
+    let report: [String: Any] = [
+      "schema": "board/call-report/v2",
+      "data": ["capability": "thread", "plugin": "requests", "output": output], "failures": [],
+    ]
+    let data = try! JSONSerialization.data(withJSONObject: report)
+    return [task.id: try! RequestThread(report: data, request: task)]
+  }
 
   static let controlBefore = """
     {
@@ -123,9 +170,11 @@ enum PreviewRequests {
 
 /// Launch options that open the app on these requests instead of iCloud's,
 /// for screenshots in the Simulator. `-fixtures` turns them on; `-open task`
-/// opens a request by its name here, `-boards` opens on the Boards list, and
-/// `-sheet sign` or `-sheet refuse` opens What You Sign or the Refuse alert.
-/// Release builds ignore them.
+/// opens a request by its name here, `-boards` opens on the Boards list,
+/// `-scroll top` opens a thread scrolled to its top, `-landscape` turns the
+/// screen to landscape, and `-sheet sign` or
+/// `-sheet refuse` opens What You Sign or the Refuse alert. Release builds
+/// ignore them.
 enum Fixture {
   static var on: Bool {
     #if DEBUG
@@ -137,6 +186,17 @@ enum Fixture {
 
   static var boards: Bool { on && CommandLine.arguments.contains("-boards") }
   static var sheet: String? { on ? value("-sheet") : nil }
+  static var scrolledUp: Bool { on && value("-scroll") == "top" }
+
+  /// Turns the screen to landscape when `-landscape` is given.
+  @MainActor static func turn() async {
+    guard on, CommandLine.arguments.contains("-landscape") else { return }
+    try? await Task.sleep(for: .seconds(1))
+    guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in
+      FileHandle.standardError.write(Data("turn: \(error)\n".utf8))
+    }
+  }
 
   /// The request `-open` names.
   static var open: Request? {
