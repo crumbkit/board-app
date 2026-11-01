@@ -2,7 +2,8 @@
 
 ## Pairing
 
-1. Open Board on the Mac. It waits for a phone.
+1. Click Add iPhone in the Board window on the Mac. The sheet waits for a
+   phone; Cancel closes it.
 2. Open Board on the phone. It makes its key and a nonce, and publishes only
    a commitment: SHA-256 of the key and nonce.
 3. The Mac sends a random nonce of its own. It pins the nonce, the
@@ -16,6 +17,7 @@
    Add with Touch ID. The Mac writes the lines ([security](security.md))
    and a grant.
 7. The phone reads the grant, shows "You're set" and deletes the records.
+   The Mac keeps the phone's name and the time ([window](window.md)).
 
 The phone commits before it sees the Mac's nonce, so a device that swaps in
 its own key cannot search for one that gives the same digits. With two

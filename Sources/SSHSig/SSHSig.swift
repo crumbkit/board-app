@@ -99,6 +99,37 @@ public func sign(message: Data, x963: Data, namespace: String, with sign: (Data)
     namespace: namespace)
 }
 
+/// The X9.63 bytes of the P-256 key an armored signature names, or nil when
+/// the text is not a P-256 SSH signature. It checks no signature: it says
+/// which key claims to have signed, so a screen can name the device.
+public func signingKey(armored: String) -> Data? {
+  let lines = armored.split(whereSeparator: \.isNewline).map(String.init)
+  guard lines.first == "-----BEGIN SSH SIGNATURE-----",
+    lines.last == "-----END SSH SIGNATURE-----",
+    let blob = Data(base64Encoded: lines.dropFirst().dropLast().joined())
+  else { return nil }
+  var reader = blob[...]
+  guard reader.prefix(magic.count) == magic else { return nil }
+  reader = reader.dropFirst(magic.count)
+  guard reader.prefix(4) == uint32(1) else { return nil }
+  reader = reader.dropFirst(4)
+  guard var key = readString(&reader) else { return nil }
+  guard readString(&key) == Data(keyType.utf8), readString(&key) == Data("nistp256".utf8),
+    let x963 = readString(&key), key.isEmpty, x963.count == 65, x963.first == 4
+  else { return nil }
+  return x963
+}
+
+/// Reads one SSH string from the front of `bytes`, or nil when it runs short.
+private func readString(_ bytes: inout Data) -> Data? {
+  guard bytes.count >= 4 else { return nil }
+  let length = bytes.prefix(4).reduce(0) { $0 << 8 | Int($1) }
+  bytes = bytes.dropFirst(4)
+  guard bytes.count >= length else { return nil }
+  defer { bytes = bytes.dropFirst(length) }
+  return Data(bytes.prefix(length))
+}
+
 private func uint32(_ value: UInt32) -> Data {
   withUnsafeBytes(of: value.bigEndian) { Data($0) }
 }

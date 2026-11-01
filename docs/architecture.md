@@ -7,11 +7,13 @@
   Board pending effect, with the JSON form Board prints, and the text of an
   allowed signers line. It owns the bytes of every SSH signature
   ([signing](signing.md)).
-- `Pairing`: the pairing code, scopes, and the writer of the allowed
-  signers files. Pure logic, shared by both apps, tested with `ssh-keygen`.
+- `Pairing`: the pairing code, scopes, and the writer and reader of the
+  allowed signers files. Pure logic, shared by both apps, tested with
+  `ssh-keygen`.
 - `Requests`: how the phone words a pending effect, orders the inbox,
   counts each board, diffs a put line by line or field by field, reads a
-  request's thread of versions and replies, and encodes a reply. Pure logic.
+  request's thread of versions and replies, encodes a reply, and reads the
+  answers Board recorded. Pure logic.
 - `Launcher`: the launcher's contract, screen model, provider runner and
   config check ([launcher](launcher.md)). Pure logic, with no AppKit.
 - `attention-sign`: the Mac command that shows a statement and signs it
@@ -24,9 +26,11 @@
   replies. In a regular width in landscape, as on the open iPhone Duo, the
   thread sits beside the request list. A half-folded iPhone Duo shows the
   inbox's tabletop layout.
-- `Apps/macOS`: the Mac app. It shows the pairing sheet and relays pending
-  effects, threads, answers and replies between the personal board and the phone. Its menu
-  bar item and ⌃⌥Space open the launcher.
+- `Apps/macOS`: the Mac app. Its window lists what waits, what was
+  answered and the paired iPhones, and opens pairing as a sheet
+  ([window](window.md)). From launch until it quits, it relays pending
+  effects, threads, answers and replies between the personal board and the
+  phone. Its menu bar item and ⌃⌥Space open the launcher.
 - `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)), and
   `AppIcon.icon`, the Icon Composer file that is both apps' icon.
 - Both are named Board, with bundle id `com.stemmacorp.board` and team

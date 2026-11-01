@@ -32,7 +32,10 @@ public struct Device: Equatable, Sendable {
 
   /// The comment that ends the device's line in an allowed signers file, so a
   /// later pairing finds and replaces that line alone.
-  public var label: String { "board-app/device/\(id)" }
+  public var label: String { Device.labelPrefix + id }
+
+  /// What every paired device's label starts with.
+  public static let labelPrefix = "board-app/device/"
 
   /// `SHA256:…`, as OpenSSH prints a fingerprint.
   public var fingerprint: String { Device.fingerprint(x963: x963) }

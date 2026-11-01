@@ -6,7 +6,9 @@ The map. Each doc describes what is built; "Not built" lines say what is not.
 - [Security](docs/security.md): keys, allowed signers, what pairing grants.
 - [Signing](docs/signing.md): what is signed, who owns the bytes, the firewall and the vectors.
 - [Sync](docs/sync.md): how the phone and the Mac meet in iCloud.
+  - [Requests](docs/sync-requests.md): the records that carry requests, answers and replies.
 - [Devices](docs/devices.md): pairing, revoking and a lost device.
+- [Board window](docs/window.md): the Mac window, what it shows, and the relay that runs while the app does.
 - [TestFlight](docs/testflight.md): sending the iPhone app through TestFlight, and what the owner sets up first.
 - [Bundle](docs/bundle.md): the Board release the Mac app carries, and how it installs.
   - [Building a release](docs/bundle-building.md): `bin/bundle`, what it needs, and how it is tested.

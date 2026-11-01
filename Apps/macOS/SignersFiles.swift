@@ -1,5 +1,6 @@
-// Adds a paired device's lines to the two allowed signers files. Every other
-// line, the Mac's own key among them, stays as it was.
+// Adds a paired device's lines to the two allowed signers files, and reads
+// back the devices they admit. Every other line, the Mac's own key among
+// them, stays as it was.
 import Foundation
 import Pairing
 import SSHSig
@@ -23,6 +24,24 @@ enum SignersFiles {
       board, device: device.id, line: AllowedSigners.boardLine(device, scope: scope))
     try AllowedSignersFile.update(
       attention, device: device.id, line: AllowedSigners.attentionLine(device, scope: scope))
+  }
+
+  /// The devices the two files admit. A missing file admits none.
+  static func paired() throws -> [PairedDevice] {
+    PairedDevice.list(board: try read(board), attention: try read(attention))
+  }
+
+  /// `~/…` for a file in the home directory, as the window shows it.
+  static func shown(_ file: URL) -> String {
+    file.path.replacingOccurrences(of: NSHomeDirectory(), with: "~", options: .anchored)
+  }
+
+  private static func read(_ file: URL) throws -> String {
+    do {
+      return try String(contentsOf: file, encoding: .utf8)
+    } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+      return ""
+    }
   }
 
   private static func home(_ path: String) -> URL {

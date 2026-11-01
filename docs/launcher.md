@@ -1,7 +1,9 @@
 # Launcher
 
-The launcher is a search panel in Board.app on the Mac. ⌃⌥Space, or a
-click on Board's menu bar item, opens it. Board.app keeps its Dock icon.
+The launcher is a search panel in Board.app on the Mac. ⌃⌥Space, Open
+Launcher in the menu of Board's menu bar item, or the search button in the
+Board window's toolbar opens it. The menu also has Open Board Window.
+Board.app keeps its Dock icon.
 
 Providers fill it. A provider is a command that prints items as JSON.
 [The contract](launcher-contract.md) says what a provider prints.

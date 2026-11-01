@@ -380,3 +380,71 @@ private func directory() throws -> URL {
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   return directory
 }
+
+struct PairedDeviceTests {
+  let mac = "owner ecdsa-sha2-nistp256 AAAAmac attention\n"
+
+  @Test func a_phone_paired_with_both_scopes_lists_once_with_both() {
+    let phone = device()
+    let board = mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n"
+    let attention = mac + AllowedSigners.attentionLine(phone, scope: .suggested)! + "\n"
+    let listed = PairedDevice.list(board: board, attention: attention)
+    #expect(listed.map(\.id) == [phone.id])
+    #expect(listed.first?.scope == .suggested)
+    #expect(listed.first?.x963 == phone.x963)
+    #expect(listed.first?.fingerprint == phone.fingerprint)
+    #expect(listed.first?.boardLine == AllowedSigners.boardLine(phone, scope: .suggested))
+    #expect(listed.first?.attentionLine == AllowedSigners.attentionLine(phone, scope: .suggested))
+  }
+
+  @Test func a_phone_with_a_line_in_attentions_file_alone_may_sign_orders_only() {
+    let phone = device()
+    let attention = AllowedSigners.attentionLine(phone, scope: [.orders])! + "\n"
+    let listed = PairedDevice.list(board: mac, attention: attention)
+    #expect(listed.first?.scope == [.orders])
+    #expect(listed.first?.boardLine == nil)
+  }
+
+  @Test func a_line_whose_namespaces_do_not_name_the_scope_grants_nothing() {
+    let phone = device()
+    let line = openSSHPublicKey(x963: phone.x963, comment: phone.label)
+    let listed = PairedDevice.list(board: "owner namespaces=\"git\" \(line)\n", attention: "")
+    #expect(listed.first?.scope == [])
+  }
+
+  @Test func the_mac_line_and_labels_that_are_not_uuids_are_not_devices() {
+    let text = mac + "owner ecdsa-sha2-nistp256 AAAA board-app/device/not-a-uuid\n"
+    #expect(PairedDevice.list(board: text, attention: text).isEmpty)
+  }
+
+  @Test func each_listed_line_is_one_that_replacing_removes() {
+    let phone = device()
+    let board =
+      mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n"
+      + "owner AAAA \(phone.label) \n"
+    let listed = PairedDevice.list(board: board, attention: "")
+    let removed = AllowedSigners.replacing(phone.id, in: board, with: nil)
+    #expect(listed.count == 1)
+    #expect(!removed.contains(listed.first!.boardLine!))
+  }
+
+  @Test func a_key_that_does_not_read_leaves_no_fingerprint() {
+    let id = UUID().uuidString
+    let listed = PairedDevice.list(
+      board: "owner ecdsa-sha2-nistp256 AAAA board-app/device/\(id)\n", attention: "")
+    #expect(listed.first?.fingerprint == nil)
+  }
+
+  @Test func a_device_without_a_stored_name_is_named_by_its_id() {
+    let listed = PairedDevice.list(
+      board: "owner AAAA board-app/device/32939622-2420-45C9-B0B9-060CB36DDED6\n", attention: "")
+    #expect(listed.first?.fallbackName == "iPhone 32939622")
+  }
+
+  @Test func namespaces_are_read_from_the_option() {
+    #expect(
+      PairedDevice.namespaces("owner namespaces=\"a/v1,b/v1\" ecdsa-sha2-nistp256 AAAA x")
+        == ["a/v1", "b/v1"])
+    #expect(PairedDevice.namespaces("owner ecdsa-sha2-nistp256 AAAA x") == [])
+  }
+}

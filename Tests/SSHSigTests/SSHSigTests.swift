@@ -37,6 +37,20 @@ final class SSHSigTests: XCTestCase {
         try verify(signing: "order", checking: "order", namespace: orderNamespace), 0)
     }
   }
+  func testThe_signing_key_is_read_back_from_an_armored_signature() throws {
+    let key = P256.Signing.PrivateKey()
+    let x963 = key.publicKey.x963Representation
+    let armor = try sign(message: Data("order".utf8), x963: x963, namespace: orderNamespace) {
+      try key.signature(for: $0).rawRepresentation
+    }
+    XCTAssertEqual(signingKey(armored: armor), x963)
+  }
+
+  func testA_signature_that_is_not_armored_names_no_key() {
+    XCTAssertNil(signingKey(armored: "not a signature"))
+    XCTAssertNil(
+      signingKey(armored: "-----BEGIN SSH SIGNATURE-----\nAAAA\n-----END SSH SIGNATURE-----\n"))
+  }
 
   private func verify(signing signed: String, checking checked: String, namespace: String) throws
     -> Int32

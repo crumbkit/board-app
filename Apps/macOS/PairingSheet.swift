@@ -1,5 +1,5 @@
-// Pairing on the Mac: the signed-off "Add … iPhone" sheet. Before any phone
-// asks, it waits for one.
+// Pairing on the Mac: the signed-off "Add … iPhone" sheet, which the window's
+// Add iPhone button opens. Before any phone asks, it waits for one.
 import LocalAuthentication
 import Pairing
 import SwiftUI
@@ -51,7 +51,7 @@ final class MacPairing {
         show(
           nil,
           problem:
-            "This iPhone started pairing before this window opened. Cancel on the iPhone, then pair again."
+            "This iPhone started pairing before this sheet opened. Cancel on the iPhone, then pair again."
         )
       } else if let challenge = Challenge(
         deviceID: request.id, name: request.name, commitment: request.commitment,
@@ -99,10 +99,11 @@ final class MacPairing {
     self.offer = nil
   }
 
-  /// Adds the offered phone with the scope the owner picked. Both are taken
-  /// before Touch ID, and the offer must be unchanged after it.
-  func add() async {
-    guard let offer else { return }
+  /// Adds the offered phone with the scope the owner picked, and keeps the
+  /// name it gave. Both are taken before Touch ID, and the offer must be
+  /// unchanged after it. True when the phone was added.
+  func add() async -> Bool {
+    guard let offer else { return false }
     let scope = self.scope
     failure = nil
     let context = LAContext()
@@ -110,16 +111,19 @@ final class MacPairing {
       try await context.evaluatePolicy(
         .deviceOwnerAuthenticationWithBiometrics,
         localizedReason: "add \(offer.device.name) to the keys that may sign for you")
-      guard self.offer == offer else { return }
+      guard self.offer == offer else { return false }
       try SignersFiles.pair(offer.device, scope: scope)
+      PhoneNotes.store(offer.device, at: Date())
       try await cloud.answer(
         offer.device.id, scope: scope, macName: Host.current().localizedName ?? "your Mac")
       self.offer = nil
+      return true
     } catch let error as LAError where error.code == .userCancel {
-      return
+      return false
     } catch {
       failure = Self.explain(error)
       problem = failure
+      return false
     }
   }
 
@@ -129,6 +133,8 @@ final class MacPairing {
 }
 
 struct PairingSheet: View {
+  /// Closes the sheet: after Cancel while it waits, and once a phone is added.
+  let close: () -> Void
   @State private var pairing = MacPairing()
 
   var body: some View {
@@ -155,6 +161,10 @@ struct PairingSheet: View {
       }
       Text("Both devices need to be signed in to the same iCloud account.")
         .foregroundStyle(.secondary).font(.callout)
+      HStack {
+        Spacer()
+        Button("Cancel", action: close).keyboardShortcut(.cancelAction)
+      }
     }
   }
 
@@ -180,7 +190,7 @@ struct PairingSheet: View {
             ForEach(SignersFiles.lines(offer.device, scope: pairing.scope), id: \.1) {
               file, line in
               Text(
-                "Adds to \(file.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")): \(line)"
+                "Adds to \(SignersFiles.shown(file)): \(line)"
               )
             }
           }
@@ -191,7 +201,7 @@ struct PairingSheet: View {
         .foregroundStyle(.secondary)
         Button("Cancel") { Task { await pairing.cancel() } }
           .keyboardShortcut(.cancelAction)
-        Button("Add with Touch ID") { Task { await pairing.add() } }
+        Button("Add with Touch ID") { Task { if await pairing.add() { close() } } }
           .keyboardShortcut(.defaultAction)
           .buttonStyle(.borderedProminent)
       }

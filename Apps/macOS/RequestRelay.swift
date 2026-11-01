@@ -1,70 +1,118 @@
 // Shares the personal board's pending effects and their threads with the
 // phone, hands the phone's answers to `board answer`, and puts its replies in
-// the personal board. It has no window of its own: it runs while Board's
-// window is open on the Mac. Board checks every signature.
+// the personal board. The app starts it at launch and it runs until the app
+// quits, whether or not the window is open. It keeps what it last did, so the
+// window can show it. Board checks every signature.
+import CloudKit
 import Foundation
 import Requests
 import SSHSig
 
 @MainActor
+@Observable
 final class RequestRelay {
-  private let cloud = RequestCloud()
-  private let home = FileManager.default.homeDirectoryForCurrentUser
-  private var board: URL { home.appendingPathComponent(".local/bin/board") }
+  /// The requests waiting in the personal board, as the phone's inbox shows
+  /// them: newest first, one per thread.
+  private(set) var waiting = Inbox([])
+  /// Each waiting request's thread, by id.
+  private(set) var threads: [String: RequestThread] = [:]
+  /// When iCloud first held each waiting request, by id.
+  private(set) var sharedSince: [String: Date] = [:]
+  /// When the relay last shared to iCloud, or nil before it has.
+  private(set) var lastShared: Date?
+  /// Why the last share failed, or nil when it worked.
+  private(set) var cloudProblem: CloudProblem?
+  /// Why the personal board could not be read, or nil when it could.
+  private(set) var boardProblem: String?
 
-  /// Shares and answers every 10 seconds until the app quits. A build that
-  /// may not use iCloud says so once and shares nothing.
+  @ObservationIgnored private let cloud = RequestCloud()
+  @ObservationIgnored private var prepared = false
+  private var board: URL { PersonalBoard.board }
+
+  /// Reads the board, then shares and answers, every 10 seconds until the
+  /// app quits. A build that may not use iCloud still reads the board, so the
+  /// window lists what waits, and says why it shares nothing.
   func run() async {
-    do {
-      try await cloud.prepare()
-    } catch let error as CloudUnavailable {
-      log("Board will not share requests: \(error.localizedDescription)")
-      return
-    } catch {}
     while !Task.isCancelled {
-      do {
-        let pending = try await pendingRequests()
-        try await cloud.share(pending)
-        for answer in try await cloud.answers() {
-          // An answer whose request is no longer pending is dropped unread.
-          let delivered = pending[answer.id] != nil ? await deliver(answer) : false
-          try await cloud.finish(answer.id, answered: delivered)
-        }
-        // A reply Board could not take stays in iCloud and is tried again.
-        for reply in try await cloud.replies() where await put(reply) {
-          try await cloud.finish(reply)
-        }
-      } catch {
-        log("Board could not share requests: \(error.localizedDescription)")
-      }
+      await step()
       try? await Task.sleep(for: .seconds(10))
     }
   }
 
-  /// The personal board's root, from Board's config.
-  private func personalBoard() throws -> URL {
-    let file = home.appendingPathComponent(".config/board/config.json")
-    let config = try JSONValue.parse(Data(contentsOf: file))
-    guard let personal = config["personal"]?.string else {
-      throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: file.path])
+  private func step() async {
+    let pending: [String: SharedRequest]
+    do {
+      pending = try await pendingRequests()
+      boardProblem = nil
+    } catch {
+      let problem = "Board could not read the personal board: \(error.localizedDescription)"
+      if problem != boardProblem { log(problem) }
+      boardProblem = problem
+      // Nothing is shared while the board cannot be read, so the window
+      // shows no list it cannot vouch for.
+      waiting = Inbox([])
+      threads = [:]
+      return
     }
-    return URL(fileURLWithPath: personal)
+    show(pending)
+    do {
+      if !prepared {
+        try await cloud.prepare()
+        prepared = true
+      }
+      let now = Date()
+      sharedSince = try await cloud.share(pending, now: now)
+      lastShared = now
+      cloudProblem = nil
+      for answer in try await cloud.answers() {
+        // An answer whose request is no longer pending is dropped unread.
+        let delivered = pending[answer.id] != nil ? await deliver(answer) : false
+        try await cloud.finish(answer.id, answered: delivered)
+      }
+      // A reply Board could not take stays in iCloud and is tried again.
+      for reply in try await cloud.replies() where await put(reply) {
+        try await cloud.finish(reply)
+      }
+    } catch {
+      let problem = CloudProblem(error)
+      // A problem is logged when it starts, not on every try.
+      if problem != cloudProblem {
+        log("Board could not share requests: \(error.localizedDescription)")
+      }
+      cloudProblem = problem
+    }
+  }
+
+  /// Keeps the requests and threads the window shows. A request no longer
+  /// pending loses its share time.
+  private func show(_ pending: [String: SharedRequest]) {
+    var requests: [Request] = []
+    var threads: [String: RequestThread] = [:]
+    for shared in pending.values {
+      guard let request = shared.request else { continue }
+      requests.append(request)
+      threads[request.id] = shared.thread(for: request)
+    }
+    waiting = Inbox(RequestThread.latestOnly(requests, threads: threads))
+    self.threads = threads
+    sharedSince = sharedSince.filter { pending[$0.key] != nil }
   }
 
   /// The committed files under `effects/pending/`, by the id each hashes to.
   /// A file whose name is not its effect's id is left out.
   private func pendingRequests() async throws -> [String: SharedRequest] {
-    let root = try personalBoard()
-    let names = try await git(root, ["ls-tree", "--name-only", "HEAD", "effects/pending/"])
+    let root = try PersonalBoard.root()
+    let names = try await PersonalBoard.git(
+      root, ["ls-tree", "--name-only", "HEAD", "effects/pending/"])
     var requests: [String: SharedRequest] = [:]
     for file in names.split(separator: "\n").map(String.init) where file.hasSuffix(".json") {
-      guard let bytes = try? await gitData(root, ["show", "HEAD:" + file]),
+      guard let bytes = try? await PersonalBoard.gitData(root, ["show", "HEAD:" + file]),
         let effect = try? Effect(json: bytes), file == "effects/pending/\(effect.id).json"
       else { continue }
-      let seconds = try await git(root, ["log", "-1", "--format=%ct", "--", file])
+      let seconds = try await PersonalBoard.git(root, ["log", "-1", "--format=%ct", "--", file])
       let board = URL(fileURLWithPath: effect.board)
       requests[effect.id] = SharedRequest(
-        effect: bytes, boardName: await boardName(board),
+        effect: bytes, boardName: await PersonalBoard.name(board),
         asked: Date(timeIntervalSince1970: TimeInterval(seconds.trimmed) ?? 0),
         prior: await prior(effect, in: board), current: await current(effect, in: board),
         currentContent: effect.content == nil ? await currentContent(effect, in: board) : nil,
@@ -73,22 +121,13 @@ final class RequestRelay {
     return requests
   }
 
-  /// `owner/name` from the board's origin, or the directory's name.
-  private func boardName(_ board: URL) async -> String {
-    guard let url = try? await git(board, ["remote", "get-url", "origin"]).trimmed, !url.isEmpty
-    else { return board.lastPathComponent }
-    let path = url.replacingOccurrences(of: ".git", with: "", options: .anchored.union(.backwards))
-    let parts = path.split(whereSeparator: { $0 == "/" || $0 == ":" })
-    return parts.suffix(2).joined(separator: "/")
-  }
-
   private func prior(_ effect: Effect, in board: URL) async -> Data? {
     guard let prior = effect.prior, prior.allSatisfy({ $0.isASCII && $0.isHexDigit }),
       prior.count >= 7
     else {
       return nil
     }
-    return try? await gitData(board, ["cat-file", "blob", prior])
+    return try? await PersonalBoard.gitData(board, ["cat-file", "blob", prior])
   }
 
   /// The blob at the effect's path on HEAD, trying the path as written and
@@ -96,7 +135,9 @@ final class RequestRelay {
   private func current(_ effect: Effect, in board: URL) async -> String? {
     let file = String(effect.path.drop { $0 == "/" })
     for candidate in [file, file + ".json"] {
-      if let blob = try? await git(board, ["rev-parse", "--verify", "-q", "HEAD:" + candidate]) {
+      if let blob = try? await PersonalBoard.git(
+        board, ["rev-parse", "--verify", "-q", "HEAD:" + candidate])
+      {
         return blob.trimmed
       }
     }
@@ -108,7 +149,9 @@ final class RequestRelay {
   private func currentContent(_ effect: Effect, in board: URL) async -> Data? {
     let file = String(effect.path.drop { $0 == "/" })
     for candidate in [file, file + ".json"] {
-      if let data = try? await gitData(board, ["show", "HEAD:" + candidate]) { return data }
+      if let data = try? await PersonalBoard.gitData(board, ["show", "HEAD:" + candidate]) {
+        return data
+      }
     }
     return nil
   }
@@ -159,73 +202,26 @@ final class RequestRelay {
     }
   }
 
-  private func git(_ directory: URL, _ arguments: [String]) async throws -> String {
-    String(decoding: try await gitData(directory, arguments), as: UTF8.self)
-  }
-
-  private func gitData(_ directory: URL, _ arguments: [String]) async throws -> Data {
-    try await runProcess(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory.path] + arguments)
-  }
-
   private func log(_ message: String) {
     FileHandle.standardError.write(Data("Board: \(message)\n".utf8))
   }
 }
 
-struct ProcessFailure: LocalizedError {
-  let command: String
-  let status: Int32
-  let output: String
-  var errorDescription: String? { "\(command) exited \(status): \(output)" }
-}
+/// Why the relay could not share, as the window words it.
+struct CloudProblem: Equatable {
+  /// What went wrong, in one sentence.
+  let message: String
+  /// What the owner can do about it, when the relay knows.
+  let advice: String?
 
-/// Runs `program` off the main thread and returns its stdout, or throws with
-/// its stderr when it exits non-zero. It reads stderr alongside stdout, so a
-/// chatty child cannot fill a pipe and stall, and stops a child that runs
-/// longer than 60 seconds.
-func runProcess(_ program: URL, _ arguments: [String], input: Data? = nil) async throws -> Data {
-  try await Task.detached { try runBlocking(program, arguments, input: input) }.value
-}
-
-private func runBlocking(_ program: URL, _ arguments: [String], input: Data?) throws -> Data {
-  let process = Process()
-  process.executableURL = program
-  process.arguments = arguments
-  let output = Pipe()
-  let errors = Pipe()
-  let stdin = Pipe()
-  process.standardOutput = output
-  process.standardError = errors
-  process.standardInput = stdin
-  try process.run()
-  let timeout = DispatchWorkItem { process.terminate() }
-  DispatchQueue.global().asyncAfter(deadline: .now() + 60, execute: timeout)
-  defer { timeout.cancel() }
-  let message = Pipe.Collected()
-  let reading = DispatchGroup()
-  DispatchQueue.global().async(group: reading) {
-    message.data = errors.fileHandleForReading.readDataToEndOfFile()
+  init(_ error: Error) {
+    if let error = error as? CKError, error.code == .notAuthenticated {
+      message = "This Mac is not signed in to iCloud."
+      advice =
+        "Sign in with the same Apple Account as your iPhone, and Board shares again within 10 seconds."
+    } else {
+      message = error.localizedDescription
+      advice = nil
+    }
   }
-  if let input { stdin.fileHandleForWriting.write(input) }
-  try stdin.fileHandleForWriting.close()
-  let data = output.fileHandleForReading.readDataToEndOfFile()
-  reading.wait()
-  process.waitUntilExit()
-  guard process.terminationStatus == 0 else {
-    throw ProcessFailure(
-      command: program.lastPathComponent, status: process.terminationStatus,
-      output: String(decoding: message.data, as: UTF8.self))
-  }
-  return data
-}
-
-extension Pipe {
-  /// Bytes one reader thread fills and another reads after the group waits.
-  fileprivate final class Collected: @unchecked Sendable {
-    var data = Data()
-  }
-}
-
-extension String {
-  fileprivate var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }

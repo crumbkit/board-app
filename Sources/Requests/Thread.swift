@@ -284,7 +284,7 @@ private func replyTime(_ name: String) -> Date? {
 }
 
 /// Board's `asked`, RFC 3339 in UTC to the microsecond, read to the second.
-private func rfc3339(_ text: String) -> Date? {
+public func rfc3339(_ text: String) -> Date? {
   guard text.hasSuffix("Z"), text.count >= 20 else { return nil }
   return utcFormatter("yyyy-MM-dd'T'HH:mm:ss").date(from: String(text.prefix(19)))
 }

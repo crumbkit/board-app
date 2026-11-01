@@ -1,5 +1,6 @@
-// The launcher's floating panel, the menu bar item and the shortcut that
-// open it, and the keys the panel handles before its field sees them.
+// The launcher's floating panel, and the keys the panel handles before its
+// field sees them. The app delegate adds the menu bar item and the shortcut
+// that open it.
 import AppKit
 import Launcher
 import SwiftUI
@@ -9,32 +10,6 @@ import os
 /// so closing it leaves the previous app frontmost.
 final class LauncherPanel: NSPanel {
   override var canBecomeKey: Bool { true }
-}
-
-/// Adds the menu bar item and the shortcut when the app starts.
-@MainActor
-final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
-  private var panel: PanelController?
-  private var statusItem: NSStatusItem?
-  private var hotKey: HotKey?
-
-  func applicationDidFinishLaunching(_ notification: Notification) {
-    let panel = PanelController()
-    self.panel = panel
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    item.button?.image = NSImage(
-      systemSymbolName: "square.grid.2x2", accessibilityDescription: "Board launcher")
-    item.button?.target = self
-    item.button?.action = #selector(clicked)
-    statusItem = item
-    hotKey = HotKey { [weak panel] in panel?.toggle() }
-    if hotKey == nil {
-      Logger(subsystem: "com.stemmacorp.board", category: "launcher").error(
-        "⌃⌥Space is taken by another app; open the launcher from the menu bar")
-    }
-  }
-
-  @objc private func clicked() { panel?.toggle() }
 }
 
 /// Opens, places and closes the launcher panel, and routes the keys it

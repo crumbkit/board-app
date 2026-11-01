@@ -38,7 +38,7 @@ final class PhoneRequests {
   }
 
   /// A list the Mac has not refreshed for this long may be out of date. The Mac
-  /// shares every 10 seconds while Board is open there.
+  /// shares every 10 seconds while Board is running there.
   static let outOfDateAfter: TimeInterval = 2 * 60
 
   func isOutOfDate(now: Date = Date()) -> Bool {

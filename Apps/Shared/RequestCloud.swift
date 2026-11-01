@@ -108,7 +108,11 @@ struct RequestCloud: Sendable {
   /// Makes the zone hold exactly `requests`, by effect id, and stamps the time.
   /// A request whose current blob is unchanged is not saved again. The effect
   /// and prior blob travel as assets, since a record holds at most 1 MB.
-  func share(_ requests: [String: SharedRequest], now: Date = Date()) async throws {
+  /// Returns when the zone first held each request: its record's creation
+  /// time, or `now` for a request new to the zone.
+  func share(_ requests: [String: SharedRequest], now: Date = Date()) async throws
+    -> [String: Date]
+  {
     let existing = try await all()
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -144,6 +148,9 @@ struct RequestCloud: Sendable {
     let stale = existing.values.filter { $0.recordType == "Request" }
       .map(\.recordID).filter { requests[$0.recordName] == nil }
     try await modify(saving: saving, deleting: stale)
+    return requests.keys.reduce(into: [:]) { created, id in
+      created[id] = existing[id]?.creationDate ?? now
+    }
   }
 
   /// Every answer the phone wrote, whether or not its request is still shared.

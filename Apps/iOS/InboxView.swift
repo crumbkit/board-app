@@ -183,7 +183,7 @@ struct RequestList: View {
         } footer: {
           if stale {
             Text(
-              "Your Mac shares new requests while it is awake and Board is open on it. Pull down to try again."
+              "Your Mac shares new requests while it is awake and Board is running on it. Pull down to try again."
             )
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)
