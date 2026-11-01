@@ -22,16 +22,6 @@ public enum AllowedSigners {
     signsOrders ? line(x963: x963, comment: label, [orderNamespace]) : nil
   }
 
-  /// `text` with the line that ends in `label` removed, and `line` appended
-  /// when it is not nil. Every other line stays as it was.
-  public static func replacing(label: String, in text: String, with line: String?) -> String {
-    var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-    if lines.last == "" { lines.removeLast() }
-    lines.removeAll { $0.hasSuffix(" " + label) }
-    if let line { lines.append(line) }
-    return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
-  }
-
   private static func line(x963: Data, comment: String, _ namespaces: [String]) -> String {
     let key = openSSHPublicKey(x963: x963, comment: comment)
     return "owner namespaces=\"\(namespaces.joined(separator: ","))\" \(key)"

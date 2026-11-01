@@ -62,7 +62,7 @@ struct AllowedSignersTests {
 
   @Test func pairing_adds_the_phone_line_and_keeps_the_mac_line() {
     let phone = device()
-    let text = AllowedSigners.replacing(phone.id, in: mac, with: "owner LINE \(phone.label)")
+    let text = PairedDevice.replacing(phone.id, in: mac, with: "owner LINE \(phone.label)")
     #expect(text == mac + "owner LINE \(phone.label)\n")
   }
 
@@ -70,19 +70,19 @@ struct AllowedSignersTests {
     let phone = device()
     let other = device()
     let before = mac + "owner OLD \(phone.label)\nowner OTHER \(other.label)\n"
-    let text = AllowedSigners.replacing(phone.id, in: before, with: "owner NEW \(phone.label)")
+    let text = PairedDevice.replacing(phone.id, in: before, with: "owner NEW \(phone.label)")
     #expect(text == mac + "owner OTHER \(other.label)\nowner NEW \(phone.label)\n")
   }
 
   @Test func unpairing_removes_only_the_phone_line() {
     let phone = device()
-    let text = AllowedSigners.replacing(phone.id, in: mac + "owner OLD \(phone.label)\n", with: nil)
+    let text = PairedDevice.replacing(phone.id, in: mac + "owner OLD \(phone.label)\n", with: nil)
     #expect(text == mac)
   }
 
   @Test func a_file_without_a_final_newline_keeps_its_last_line() {
     let phone = device()
-    let text = AllowedSigners.replacing(phone.id, in: "owner MAC", with: "owner NEW \(phone.label)")
+    let text = PairedDevice.replacing(phone.id, in: "owner MAC", with: "owner NEW \(phone.label)")
     #expect(text == "owner MAC\nowner NEW \(phone.label)\n")
   }
 
@@ -417,15 +417,62 @@ struct PairedDeviceTests {
     #expect(PairedDevice.list(board: text, attention: text).isEmpty)
   }
 
-  @Test func each_listed_line_is_one_that_replacing_removes() {
+  @Test func a_line_with_a_trailing_space_is_listed_and_removed() {
     let phone = device()
     let board =
       mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n"
       + "owner AAAA \(phone.label) \n"
     let listed = PairedDevice.list(board: board, attention: "")
-    let removed = AllowedSigners.replacing(phone.id, in: board, with: nil)
     #expect(listed.count == 1)
-    #expect(!removed.contains(listed.first!.boardLine!))
+    #expect(PairedDevice.removing(phone.id, keyedIn: [board], from: board) == mac)
+  }
+
+  @Test func every_line_ssh_keygen_would_read_as_the_phone_is_removed() {
+    let phone = device()
+    let line = AllowedSigners.boardLine(phone, scope: .suggested)!
+    let key = openSSHPublicKey(x963: phone.x963, comment: "")
+    for variant in [
+      line + "\r", line + " ", line + "\t",
+      line.replacingOccurrences(of: " \(phone.label)", with: "\t\(phone.label)"),
+      line + " trailing words",
+    ] {
+      let text = mac + variant + "\n"
+      #expect(PairedDevice.list(board: text, attention: "").map(\.id) == [phone.id], "\(variant)")
+      #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == mac, "\(variant)")
+    }
+    // A copy of the key goes too, found by the key wherever it sits.
+    let blob = String(key.split(separator: " ")[1])
+    for copy in [
+      "owner \(key)copied by hand", "ssh-x,owner \(blob)",
+      "ecdsa-a,owner namespaces=\"board/approve/v1\" \(blob)",
+      "owner namespaces=\"board/approve/v1, ssh-y\" \(blob)",
+    ] {
+      let text = mac + line + "\n" + copy + "\n"
+      #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == mac, "\(copy)")
+    }
+    // Copies OpenSSH reads but Swift splits differently go too: space
+    // characters inside the base64, a combining mark after the key, and a
+    // NUL that ends the line for OpenSSH.
+    let half = blob.index(blob.startIndex, offsetBy: 40)
+    for copy in [
+      "owner ecdsa-sha2-nistp256 \(blob[..<half])\u{0B}\(blob[half...])",
+      "owner ecdsa-sha2-nistp256 \(blob[..<half])\u{0C}\(blob[half...])",
+      "owner ecdsa-sha2-nistp256 \(blob) \u{0301}", "owner ecdsa-sha2-nistp256 \(blob)\u{0}junk",
+    ] {
+      let text = mac + line + "\n" + copy + "\n"
+      #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == mac, "\(copy)")
+    }
+    // The label in lower case names the same phone.
+    let lower = mac + line.replacingOccurrences(of: phone.id, with: phone.id.lowercased()) + "\n"
+    #expect(PairedDevice.list(board: lower, attention: "").map(\.id) == [phone.id])
+    #expect(PairedDevice.removing(phone.id, keyedIn: [lower], from: lower) == mac)
+  }
+
+  @Test func a_comment_naming_a_phone_is_neither_listed_nor_removed() {
+    let phone = device()
+    let text = mac + "# owner AAAA \(phone.label)\n"
+    #expect(PairedDevice.list(board: text, attention: "").isEmpty)
+    #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == text)
   }
 
   @Test func a_key_that_does_not_read_leaves_no_fingerprint() {
@@ -446,5 +493,84 @@ struct PairedDeviceTests {
       PairedDevice.namespaces("owner namespaces=\"a/v1,b/v1\" ecdsa-sha2-nistp256 AAAA x")
         == ["a/v1", "b/v1"])
     #expect(PairedDevice.namespaces("owner ecdsa-sha2-nistp256 AAAA x") == [])
+  }
+}
+
+struct RemovalTests {
+  let mac = "owner ecdsa-sha2-nistp256 AAAAmac attention\n"
+
+  @Test func removing_a_phone_deletes_its_line_from_both_files_and_keeps_the_rest() throws {
+    let phone = device()
+    let other = device()
+    let board = try temporary(
+      "board", mac + "owner A \(phone.label)\nowner B \(other.label)\n")
+    let attention = try temporary("attention", mac + "owner C \(phone.label)\n")
+    try AllowedSignersFile.remove(device: phone.id, from: [board, attention])
+    #expect(try String(contentsOf: board, encoding: .utf8) == mac + "owner B \(other.label)\n")
+    #expect(try String(contentsOf: attention, encoding: .utf8) == mac)
+  }
+
+  @Test func a_refused_file_does_not_stop_the_removal_from_the_other() throws {
+    let phone = device()
+    let board = try temporary("board", mac + "owner A \(phone.label)\n")
+    let attention = try temporary("attention", mac + "owner C \(phone.label)\n")
+    try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: board.path)
+    #expect {
+      try AllowedSignersFile.remove(device: phone.id, from: [board, attention])
+    } throws: { error in
+      (error as? AllowedSignersFile.RemovalFailed)?.failures.map(\.file) == [board]
+    }
+    #expect(try String(contentsOf: board, encoding: .utf8).contains(phone.label))
+    #expect(try String(contentsOf: attention, encoding: .utf8) == mac)
+  }
+
+  @Test func a_missing_file_is_left_missing() throws {
+    let phone = device()
+    let missing = try directory().appendingPathComponent("absent")
+    try AllowedSignersFile.remove(device: phone.id, from: [missing])
+    #expect(!FileManager.default.fileExists(atPath: missing.path))
+  }
+
+  @Test func an_id_that_is_not_a_uuid_removes_nothing() throws {
+    let text = mac + "owner A board-app/device/\n"
+    let board = try temporary("board", text)
+    #expect(throws: AllowedSignersFile.RemovalFailed.self) {
+      try AllowedSignersFile.remove(device: "", from: [board])
+    }
+    #expect(try String(contentsOf: board, encoding: .utf8) == text)
+  }
+}
+
+struct RemovalByKeyTests {
+  let mac = "owner ecdsa-sha2-nistp256 AAAAmac attention\n"
+
+  @Test func a_key_labelled_in_one_file_is_removed_from_the_other_under_any_comment() throws {
+    let phone = device()
+    let board = try temporary(
+      "board", mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n")
+    let unlabelled = "owner " + openSSHPublicKey(x963: phone.x963, comment: "old")
+    let attention = try temporary("attention", mac + unlabelled + "\n")
+    try AllowedSignersFile.remove(device: phone.id, from: [board, attention])
+    #expect(try String(contentsOf: board, encoding: .utf8) == mac)
+    #expect(try String(contentsOf: attention, encoding: .utf8) == mac)
+  }
+
+  @Test func a_rewrite_keeps_the_files_mode() throws {
+    let phone = device()
+    let board = try temporary("board", mac + "owner A \(phone.label)\n")
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: board.path)
+    try AllowedSignersFile.remove(device: phone.id, from: [board])
+    let mode = try FileManager.default.attributesOfItem(atPath: board.path)[.posixPermissions]
+    #expect((mode as? NSNumber)?.intValue == 0o600)
+    #expect(
+      try FileManager.default.contentsOfDirectory(atPath: board.deletingLastPathComponent().path)
+        == ["board"])
+  }
+
+  @Test func pairing_again_replaces_a_hand_edited_line_of_the_same_phone() throws {
+    let phone = device()
+    let board = try temporary("board", mac + "owner OLD \(phone.label)\r\n")
+    try AllowedSignersFile.update(board, device: phone.id, line: "owner NEW \(phone.label)")
+    #expect(try String(contentsOf: board, encoding: .utf8) == mac + "owner NEW \(phone.label)\n")
   }
 }

@@ -229,6 +229,9 @@ struct PhonePage: View {
   /// When it last approved a request in the last 7 days, or nil.
   let lastAnswer: Date?
   let pairAgain: () -> Void
+  /// Called after a removal, with nil when it worked or what went wrong.
+  let removed: (String?) -> Void
+  @State private var confirming = false
 
   var body: some View {
     Form {
@@ -272,10 +275,35 @@ struct PhonePage: View {
         HStack {
           Spacer()
           Button("Pair Again to Change…", action: pairAgain)
+          Button("Remove iPhone…", role: .destructive) { confirming = true }
         }
       }
     }
     .formStyle(.grouped)
+    .confirmationDialog(
+      "Remove \(phone.name)?", isPresented: $confirming, titleVisibility: .visible
+    ) {
+      Button("Remove with Touch ID", role: .destructive) { remove() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(
+        "\(phone.name), key \(phone.device.fingerprint ?? phone.id), will no longer be able to approve requests or sign orders. Board deletes its lines from both allowed signers files. To use it again, pair it again."
+      )
+    }
+  }
+
+  /// Asks for Touch ID, then removes the phone. The id is the one this page
+  /// shows, taken before Touch ID.
+  private func remove() {
+    let id = phone.id
+    let name = phone.name
+    Task {
+      do {
+        if try await removePhone(id: id, name: name) { removed(nil) }
+      } catch {
+        removed("Board could not remove \(name): \(error.localizedDescription)")
+      }
+    }
   }
 
   /// Each file the phone has a line in, and the namespaces the line admits.

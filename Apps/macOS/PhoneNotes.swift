@@ -22,6 +22,15 @@ enum PhoneNotes {
     return notes
   }
 
+  /// Forgets a removed device's note.
+  static func forget(_ id: String, in defaults: UserDefaults = .standard) {
+    var notes = all(defaults)
+    guard notes.removeValue(forKey: id) != nil,
+      let data = try? JSONEncoder().encode(notes)
+    else { return }
+    defaults.set(data, forKey: key)
+  }
+
   /// Keeps the device's name and the time, replacing any earlier note.
   static func store(_ device: Device, at date: Date, in defaults: UserDefaults = .standard) {
     var notes = all(defaults)

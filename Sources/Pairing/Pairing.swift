@@ -168,11 +168,6 @@ extension AllowedSigners {
     deviceAttentionLine(
       x963: device.x963, label: device.label, signsOrders: scope.contains(.orders))
   }
-
-  /// `text` with the device's line replaced by `line`, or removed when it is nil.
-  public static func replacing(_ id: String, in text: String, with line: String?) -> String {
-    replacing(label: Device(id: id, name: "", x963: Data()).label, in: text, with: line)
-  }
 }
 
 /// One allowed signers file on disk, held to the rules Board applies to it.
@@ -193,11 +188,67 @@ public enum AllowedSignersFile {
     }
   }
 
-  /// Replaces the device's line in `file`, or removes it when `line` is nil.
-  /// A symlink is followed and kept. A missing file is made with mode 644; an
-  /// existing one keeps its mode. A file that cannot be read is left as it was
-  /// and the error is thrown, so a failed read never drops the other lines.
+  /// A removal that left the device's line in some files.
+  public struct RemovalFailed: LocalizedError {
+    /// Each file the line may still be in, and why it was not removed.
+    public let failures: [(file: URL, error: Error)]
+
+    public var errorDescription: String? {
+      failures.map { "\($0.file.path): \($0.error.localizedDescription)" }
+        .joined(separator: " ")
+    }
+  }
+
+  /// Removes every line that names the device from every file in `files`:
+  /// a line with its label, and a line with the key of any labelled line,
+  /// whatever its comment ([PairedDevice.removing]). It reads every file
+  /// before it writes any, so a key found in one file is removed from all.
+  /// It tries each file even when an earlier one fails, then throws
+  /// RemovalFailed naming each file that failed. An id that is not a UUID
+  /// removes nothing and throws.
+  public static func remove(device id: String, from files: [URL]) throws {
+    guard UUID(uuidString: id)?.uuidString == id.uppercased() else {
+      throw RemovalFailed(failures: files.map { ($0, CocoaError(.fileWriteInvalidFileName)) })
+    }
+    var texts: [String] = []
+    var failures: [(file: URL, error: Error)] = []
+    for file in files {
+      do {
+        texts.append(try read(file))
+      } catch {
+        failures.append((file, error))
+      }
+    }
+    for file in files where !failures.contains(where: { $0.file == file }) {
+      do {
+        try rewrite(file) { PairedDevice.removing(id, keyedIn: texts, from: $0) }
+      } catch {
+        failures.append((file, error))
+      }
+    }
+    if !failures.isEmpty { throw RemovalFailed(failures: failures) }
+  }
+
+  /// The file's text, or "" when it is missing.
+  private static func read(_ file: URL) throws -> String {
+    let target = file.resolvingSymlinksInPath()
+    guard FileManager.default.fileExists(atPath: target.path) else { return "" }
+    return try String(contentsOf: target, encoding: .utf8)
+  }
+
+  /// Replaces every line that names the device in `file` with `line`, or
+  /// removes them when `line` is nil.
   public static func update(_ file: URL, device id: String, line: String?) throws {
+    try rewrite(file) { PairedDevice.replacing(id, in: $0, with: line) }
+  }
+
+  /// Writes `change` of the file's text. A symlink is followed and kept. A
+  /// missing file is made with mode 644; an existing one keeps its mode. The
+  /// new text goes to a file beside it with that mode first, then replaces
+  /// it in one rename, so no reader sees a partial file or a wider mode. A
+  /// file that cannot be read is left as it was and the error is thrown, so
+  /// a failed read never drops the other lines.
+  private static func rewrite(_ file: URL, _ change: (String) -> String) throws {
     let manager = FileManager.default
     let target = file.resolvingSymlinksInPath()
     var existing = ""
@@ -218,11 +269,26 @@ public enum AllowedSignersFile {
       guard mode & 0o022 == 0 else { throw Refusal.writableByOthers(target.path) }
       existing = try String(contentsOf: target, encoding: .utf8)
     }
-    let text = AllowedSigners.replacing(id, in: existing, with: line)
+    let text = change(existing)
     guard text != existing else { return }
-    try manager.createDirectory(
-      at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try Data(text.utf8).write(to: target, options: .atomic)
-    try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: target.path)
+    let folder = target.deletingLastPathComponent()
+    try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+    let temporary = folder.appendingPathComponent(
+      ".\(target.lastPathComponent).\(UUID().uuidString)")
+    // Made with the file's mode, refusing a link or an existing file there,
+    // so no other user can open it before the rename.
+    let descriptor = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, mode_t(mode))
+    guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    defer { try? manager.removeItem(at: temporary) }
+    let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    guard fchmod(descriptor, mode_t(mode)) == 0 else {
+      throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    try handle.write(contentsOf: Data(text.utf8))
+    try handle.synchronize()
+    try handle.close()
+    guard rename(temporary.path, target.path) == 0 else {
+      throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
   }
 }

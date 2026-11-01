@@ -26,6 +26,12 @@ enum SignersFiles {
       attention, device: device.id, line: AllowedSigners.attentionLine(device, scope: scope))
   }
 
+  /// Removes the device's line from both files, trying each even when the
+  /// other fails.
+  static func remove(_ id: String) throws {
+    try AllowedSignersFile.remove(device: id, from: [board, attention])
+  }
+
   /// The devices the two files admit. A missing file admits none.
   static func paired() throws -> [PairedDevice] {
     PairedDevice.list(board: try read(board), attention: try read(attention))

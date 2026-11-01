@@ -26,7 +26,8 @@ so after a restart nothing is shared until the owner opens it.
 - iPhones: each device with a line in either allowed signers file
   ([security](security.md)). Its page shows what it may approve, read from
   the namespaces of its lines, its key's fingerprint and its lines. Pair
-  Again to Change opens pairing, which replaces the lines.
+  Again to Change opens pairing, which replaces the lines. Remove iPhone
+  deletes them after Touch ID ([devices](devices.md)).
 - The footer says whether the relay is sharing and when it last did. When
   iCloud fails, a banner says what to do; when no iPhone is paired, a
   banner offers Add iPhone.
@@ -43,5 +44,3 @@ At pairing the Mac keeps the name the phone gave and the time, in its own
 defaults. They are shown and never trusted: what a phone may sign comes
 from the two files alone. A phone paired before the Mac kept names shows as
 "iPhone" and the first 8 characters of its id until it pairs again.
-
-Not built: removing a paired iPhone from the window.

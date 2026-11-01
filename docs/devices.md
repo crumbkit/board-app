@@ -27,6 +27,18 @@ Pairing the same phone again replaces its lines with the new scope.
 
 ## Revoking and a lost device
 
-Not built in the app. To revoke a phone, delete the line ending in
-`board-app/device/<id>` from both allowed signers files. A lost phone's key
-needs that phone's Face ID or Touch ID, but revoke it anyway.
+Select the phone in the Board window and click Remove iPhone. A
+confirmation names the phone; Remove with Touch ID then deletes from both
+allowed signers files every line that names it: a line with the field
+`board-app/device/<id>`, split on spaces, tabs and CR, and a line from
+which OpenSSH could read the same key, under any comment. It reads both
+files before it writes either, then forgets the phone's name. The id is the one the page showed, taken before
+Touch ID.
+
+Board tries both files even when one fails, and an alert names each file
+that still holds the phone's key, such as one that group or others may
+write. Removing a phone touches no other line, and the phone's own key and app are left as they are; to use it
+again, pair it again.
+
+A lost phone's key needs that phone's Face ID or Touch ID, but remove it
+anyway.

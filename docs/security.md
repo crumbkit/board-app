@@ -19,10 +19,12 @@
   names the namespaces.
 - No device may sign the owner's own protected writes. A phone paired
   before devices lost that permission keeps it until it pairs again.
-- The line ends in `board-app/device/<id>`. Pairing again replaces it;
-  every other line stays.
-- The Mac writes the files after Touch ID. It follows a symlink and keeps
-  the file's mode. It refuses what Board would not trust, a file that group
+- The line ends in `board-app/device/<id>`. Pairing again replaces every
+  line in the file with that label or the phone's key, and removing the phone deletes
+  them from both files; every other line stays.
+- The Mac writes the files after Touch ID, to add and to remove. It
+  follows a symlink and keeps the file's mode, writing a file beside it
+  with that mode and renaming it over the old one. It refuses what Board would not trust, a file that group
   or others may write or that neither the user nor root owns, and a file it
   cannot read, so a failed read never drops the Mac's line.
 - A device id must be a UUID, so it cannot carry a newline or space into a

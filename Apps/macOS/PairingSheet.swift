@@ -132,6 +132,26 @@ final class MacPairing {
   }
 }
 
+/// Removes a paired phone's lines from both allowed signers files after
+/// Touch ID, then forgets its name. False when the owner cancels Touch ID.
+/// It throws when a file kept the phone's line, naming each such file.
+@MainActor
+func removePhone(id: String, name: String) async throws -> Bool {
+  let context = LAContext()
+  // Touch ID alone, as for adding, so the panel offers no password button.
+  context.localizedFallbackTitle = ""
+  do {
+    try await context.evaluatePolicy(
+      .deviceOwnerAuthenticationWithBiometrics,
+      localizedReason: "remove \(name) from the keys that may sign for you")
+  } catch let error as LAError where error.code == .userCancel {
+    return false
+  }
+  try SignersFiles.remove(id)
+  PhoneNotes.forget(id)
+  return true
+}
+
 struct PairingSheet: View {
   /// Closes the sheet: after Cancel while it waits, and once a phone is added.
   let close: () -> Void

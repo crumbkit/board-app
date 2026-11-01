@@ -86,6 +86,9 @@ struct BoardWindow: View {
   @State private var model = BoardWindowModel()
   @State private var page: Page? = .waiting
   @State private var pairing = false
+  /// Why the last removal failed, kept by the window so it outlives the
+  /// phone's page.
+  @State private var removalProblem: String?
 
   var body: some View {
     NavigationSplitView {
@@ -113,6 +116,17 @@ struct BoardWindow: View {
         Task { await model.refresh() }
       }
       .frame(width: 560)
+    }
+    .alert(
+      "Board could not remove the iPhone",
+      isPresented: Binding(get: { removalProblem != nil }, set: { if !$0 { removalProblem = nil } })
+    ) {
+      Button("OK") {}
+    } message: {
+      Text(
+        (removalProblem ?? "")
+          + " The phone may still be able to sign. Check both allowed signers files before you rely on the removal."
+      )
     }
     .task { await model.watch() }
   }
@@ -155,9 +169,16 @@ struct BoardWindow: View {
         .navigationSubtitle("Last 7 days")
     case .phone(let id):
       if let phone = model.phones.first(where: { $0.id == id }) {
-        PhonePage(phone: phone, lastAnswer: model.lastAnswer(by: phone)) { pairing = true }
-          .navigationTitle(phone.name)
-          .navigationSubtitle(phone.paired.map { "Paired \(dated($0))" } ?? "")
+        PhonePage(
+          phone: phone, lastAnswer: model.lastAnswer(by: phone), pairAgain: { pairing = true },
+          removed: { problem in
+            removalProblem = problem
+            Task { await model.refresh() }
+          }
+        )
+        .id(phone.id)
+        .navigationTitle(phone.name)
+        .navigationSubtitle(phone.paired.map { "Paired \(dated($0))" } ?? "")
       } else {
         waiting
       }
