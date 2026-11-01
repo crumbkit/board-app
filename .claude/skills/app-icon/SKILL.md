@@ -6,7 +6,8 @@ description: Make or change Board.app's Liquid Glass app icon, an Icon Composer 
 # App icon
 
 The icon is an Icon Composer file in git: `Apps/Shared/AppIcon.icon`, a
-folder with `icon.json` and SVG layers in `Assets/`. You write both by hand.
+folder with `icon.json` and its layers, SVG or PNG files, in `Assets/`. The
+current icon's layers are PNGs. You write `icon.json` and the layers yourself.
 The system adds the glass, highlights, shadow, mask, and the dark, tinted
 and clear looks. Never draw those yourself.
 
@@ -96,10 +97,11 @@ the targets.
 
 5. Send both contact sheets to the owner for sign-off. Stop until he signs off.
 
-6. Once signed off, set `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon` in
-   each target's settings in `project.yml`. Both targets already list
-   `Apps/Shared` as a source, so do not add the `.icon` again. Xcode
-   compiles the `.icon` itself.
+6. Once signed off, replace the files in `Apps/Shared/AppIcon.icon`. Nothing
+   else changes: `project.yml` sets `ASSETCATALOG_COMPILER_APPICON_NAME:
+   AppIcon` once in the project-wide settings, which both targets inherit,
+   and both targets list `Apps/Shared` as a source. Xcode compiles the
+   `.icon` itself.
 
 ## Gotchas
 

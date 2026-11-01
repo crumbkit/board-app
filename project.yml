@@ -22,6 +22,9 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: com.stemmacorp.board
     GENERATE_INFOPLIST_FILE: YES
     INFOPLIST_KEY_CFBundleDisplayName: Board
+    # Apps/Shared/AppIcon.icon, an Icon Composer file, is the icon of both
+    # apps. Xcode compiles it into each app's asset catalog.
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 packages:
   board-app:
     path: .

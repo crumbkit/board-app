@@ -1,0 +1,133 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.04706,0.12941,0.09804,1.00000",
+      "srgb:0.01961,0.05490,0.03922,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1.0
+      }
+    }
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "fill": {
+            "solid": "srgb:0.95686,0.98431,0.96471,1.00000"
+          },
+          "glass": true,
+          "image-name": "route.png",
+          "name": "route",
+          "opacity-specializations": [
+            {
+              "value": 1
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            },
+            {
+              "appearance": "tinted",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "name": "route",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "fill": {
+            "solid": "srgb:0.95686,0.98431,0.96471,1.00000"
+          },
+          "glass": false,
+          "image-name": "glow.png",
+          "name": "glow",
+          "opacity-specializations": [
+            {
+              "value": 0.35
+            },
+            {
+              "appearance": "dark",
+              "value": 0.44999999999999996
+            },
+            {
+              "appearance": "tinted",
+              "value": 0.2
+            }
+          ]
+        },
+        {
+          "fill": {
+            "solid": "srgb:0.81176,0.96078,0.43529,1.00000"
+          },
+          "glass": true,
+          "image-name": "tops.png",
+          "name": "tops",
+          "opacity-specializations": [
+            {
+              "value": 0.95
+            },
+            {
+              "appearance": "dark",
+              "value": 1.0
+            },
+            {
+              "appearance": "tinted",
+              "value": 1.0
+            }
+          ]
+        },
+        {
+          "fill": {
+            "solid": "srgb:0.18039,0.47843,0.40784,1.00000"
+          },
+          "glass": true,
+          "image-name": "sides.png",
+          "name": "sides",
+          "opacity-specializations": [
+            {
+              "value": 0.9
+            },
+            {
+              "appearance": "dark",
+              "value": 0.95
+            },
+            {
+              "appearance": "tinted",
+              "value": 0.8
+            }
+          ]
+        }
+      ],
+      "name": "ridges",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.22
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

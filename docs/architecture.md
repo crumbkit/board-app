@@ -27,7 +27,8 @@
 - `Apps/macOS`: the Mac app. It shows the pairing sheet and relays pending
   effects, threads, answers and replies between the personal board and the phone. Its menu
   bar item and ⌃⌥Space open the launcher.
-- `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)).
+- `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)), and
+  `AppIcon.icon`, the Icon Composer file that is both apps' icon.
 - Both are named Board, with bundle id `com.stemmacorp.board` and team
   `78HLU526FA`.
 

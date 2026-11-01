@@ -14,6 +14,10 @@ stays a build `bin/install-mac` signs.
 - The iPad layout allows every orientation, as App Store Connect requires.
 - `Apps/iOS/PrivacyInfo.xcprivacy` declares the app's use of `UserDefaults`,
   which App Store Connect requires.
+- The app has an icon, which App Store Connect requires: the Icon Composer
+  file `Apps/Shared/AppIcon.icon`. The build compiles it into the app's
+  asset catalog with every size and look, including the 1024 px App Store
+  image.
 
 ## Before the first upload
 
@@ -29,8 +33,6 @@ The owner does each of these once:
 - Answer the export compliance question. App Store Connect asks it for every
   build until `ITSAppUsesNonExemptEncryption` is set in `project.yml`. The
   app signs with the Secure Enclave and checks signatures.
-- Add an app icon. App Store Connect refuses a build without one, and the
-  app has none yet.
 
 ## Not built
 
