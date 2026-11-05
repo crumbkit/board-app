@@ -2,6 +2,10 @@
 // requests' threads, and Board's refusals of answers to questions.
 import Foundation
 import Requests
+import os
+
+/// The inbox's log, which Console shows under this subsystem and category.
+private let log = Logger(subsystem: "com.stemmacorp.board", category: "inbox")
 
 @MainActor
 @Observable
@@ -34,6 +38,10 @@ final class PhoneRequests {
   /// Refusals shown here, so one is not shown again while its record is
   /// being deleted.
   private var shown: [QuestionRefused] = []
+  /// How many refreshes have started a read, and the number of the one whose
+  /// read was last applied, so an older read never replaces a newer one.
+  private var readsStarted = 0
+  private var readApplied = 0
   private let cloud: RequestCloud?
 
   init() {
@@ -76,25 +84,45 @@ final class PhoneRequests {
     }
   }
 
-  /// Reads the requests and questions again. A failed read keeps the list as
-  /// it was, and the inbox says how old it is once the Mac's stamp is old
-  /// enough.
+  /// Reads the requests, questions and refusals again, in one read of the
+  /// changes since the last. A failed read is logged and keeps the list as it
+  /// was, and the inbox says how old it is once the Mac's stamp is old
+  /// enough. A read that started before the last one applied is dropped.
   func refresh() async {
-    guard let cloud, let read = try? await cloud.requests() else { return }
+    guard let cloud else { return }
+    readsStarted += 1
+    let number = readsStarted
+    let started = Date()
+    let read:
+      (
+        requests: [String: SharedRequest], shared: Date?, questions: [Question],
+        refusals: [QuestionRefused]
+      )
+    do {
+      read = try await cloud.inbox()
+    } catch {
+      log.error("The inbox could not refresh: \(error.localizedDescription, privacy: .public)")
+      return
+    }
+    guard number > readApplied else { return }
+    readApplied = number
+    log.info(
+      "The inbox refreshed in \(Date().timeIntervalSince(started), format: .fixed(precision: 2)) s"
+    )
     var requests: [Request] = []
     for shared in read.requests.values {
       guard let request = shared.request, !answered.contains(request.id) else { continue }
       requests.append(request)
       threads[request.id] = shared.thread(for: request)
     }
-    let questions = (try? await cloud.questions()) ?? inbox.questions
+    let questions = read.questions
     inbox = Inbox(RequestThread.latestOnly(requests, threads: threads), questions: questions)
     for request in inbox.requests { known[request.id] = request }
     for question in questions { knownQuestions[question.id] = question }
     // A question that left the list no longer needs its sending mark.
     answering.formIntersection(questions.map(\.id))
     shared = read.shared
-    for refused in (try? await cloud.refusals()) ?? [] where !shown.contains(refused) {
+    for refused in read.refusals where !shown.contains(refused) {
       answering.remove(refused.question)
       if !refusals.contains(refused) { refusals.append(refused) }
     }

@@ -75,24 +75,18 @@ struct RequestCloud: Sendable {
   /// The record the Mac rewrites each time it shares, so the phone can say how
   /// old its list is.
   private let sharedName = "mac"
+  /// The copy of the zone this value and its copies share, so each read asks
+  /// only for the changes since the last.
+  private let reader = ZoneReader()
 
   func prepare() async throws {
     _ = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: zone)], deleting: [])
   }
 
-  /// Every record in the zone, by name, reading every batch.
+  /// Every record in the zone, by name, after reading the changes since the
+  /// last read.
   private func all() async throws -> [String: CKRecord] {
-    var records: [String: CKRecord] = [:]
-    var token: CKServerChangeToken?
-    while true {
-      let changes = try await database.recordZoneChanges(inZoneWith: zone, since: token)
-      for result in changes.modificationResultsByID.values {
-        if let record = try? result.get().record { records[record.recordID.recordName] = record }
-      }
-      for deletion in changes.deletions { records[deletion.recordID.recordName] = nil }
-      guard changes.moreComing else { return records }
-      token = changes.changeToken
-    }
+    try await reader.records(database: database, zone: zone)
   }
 
   /// Saves and deletes each record on its own, so one record CloudKit refuses
@@ -180,6 +174,21 @@ struct RequestCloud: Sendable {
   /// show one effect and be answered as another.
   func requests() async throws -> (requests: [String: SharedRequest], shared: Date?) {
     let records = try await all()
+    return (requests(in: records), shared(in: records))
+  }
+
+  /// The requests, questions and refusals from one read of the zone.
+  func inbox() async throws -> (
+    requests: [String: SharedRequest], shared: Date?, questions: [Question],
+    refusals: [QuestionRefused]
+  ) {
+    let records = try await all()
+    return (
+      requests(in: records), shared(in: records), questions(in: records), refusals(in: records)
+    )
+  }
+
+  private func requests(in records: [String: CKRecord]) -> [String: SharedRequest] {
     var requests: [String: SharedRequest] = [:]
     func read(_ value: Any?) -> Data? {
       (value as? CKAsset)?.fileURL.flatMap { try? Data(contentsOf: $0) }
@@ -195,7 +204,12 @@ struct RequestCloud: Sendable {
       guard let parsed = request.parsed, parsed.id == record.recordID.recordName else { continue }
       requests[parsed.id] = request
     }
-    return (requests, records[sharedName]?["at"] as? Date)
+    return requests
+  }
+
+  /// When the Mac last shared, from its `Shared` record.
+  private func shared(in records: [String: CKRecord]) -> Date? {
+    records[sharedName]?["at"] as? Date
   }
 
   func answer(_ answer: RequestAnswer) async throws {
@@ -259,7 +273,11 @@ struct RequestCloud: Sendable {
 
   /// The questions the Mac shared. A record not named by its path is left out.
   func questions() async throws -> [Question] {
-    try await all().values.compactMap { record in
+    questions(in: try await all())
+  }
+
+  private func questions(in records: [String: CKRecord]) -> [Question] {
+    records.values.compactMap { record in
       guard record.recordType == "Question" else { return nil }
       return Question(name: record.recordID.recordName, fields: strings(record))
     }
@@ -295,7 +313,11 @@ struct RequestCloud: Sendable {
 
   /// Board's refusals of answers sent from the phone.
   func refusals() async throws -> [QuestionRefused] {
-    try await all().values.compactMap { record in
+    refusals(in: try await all())
+  }
+
+  private func refusals(in records: [String: CKRecord]) -> [QuestionRefused] {
+    records.values.compactMap { record in
       guard record.recordType == "QuestionRefused" else { return nil }
       return QuestionRefused(name: record.recordID.recordName, fields: strings(record))
     }
@@ -314,4 +336,85 @@ struct RequestCloud: Sendable {
   private func name(_ name: String) -> CKRecord.ID {
     CKRecord.ID(recordName: name, zoneID: zone)
   }
+}
+
+/// Holds the copy of zone `Requests` and reads it one read at a time. A read
+/// that starts while another is in flight waits for it, so two reads never
+/// apply batches in turn with each other.
+private actor ZoneReader {
+  private var copy = ZoneCopy<CKRecord, CKServerChangeToken>()
+  /// The read in flight or last finished, which the next read waits for.
+  private var last: Task<Void, Never>?
+  /// Where the copy keeps its records' assets. CloudKit may remove the files
+  /// it downloads once a read is over, so each asset is copied here when its
+  /// record arrives.
+  private let assets = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "Requests-" + UUID().uuidString)
+
+  /// The zone's records, by name, after reading the changes since the last
+  /// read. An expired token, or a zone that is gone, starts the copy again.
+  func records(database: CKDatabase, zone: CKRecordZone.ID) async throws -> [String: CKRecord] {
+    let previous = last
+    let read = Task { () async throws -> [String: CKRecord] in
+      await previous?.value
+      return try await self.read(database: database, zone: zone)
+    }
+    last = Task { _ = try? await read.value }
+    return try await read.value
+  }
+
+  private func read(database: CKDatabase, zone: CKRecordZone.ID) async throws -> [String: CKRecord]
+  {
+    // The copy is read into a local value and stored back whether or not the
+    // read throws, so the batches applied before a failure are kept.
+    var copy = self.copy
+    defer { self.copy = copy }
+    let assets = self.assets
+    try await copy.read(
+      changes: { token in
+        let changes = try await database.recordZoneChanges(inZoneWith: zone, since: token)
+        var modified: [String: CKRecord] = [:]
+        for result in changes.modificationResultsByID.values {
+          if let record = try? result.get().record {
+            ZoneReader.keepAssets(of: record, in: assets)
+            modified[record.recordID.recordName] = record
+          }
+        }
+        for deletion in changes.deletions {
+          try? FileManager.default.removeItem(at: folder(deletion.recordID.recordName, in: assets))
+        }
+        return .init(
+          modified: modified, deleted: changes.deletions.map(\.recordID.recordName),
+          token: changes.changeToken, moreComing: changes.moreComing)
+      },
+      isExpired: { error in
+        guard let error = error as? CKError else { return false }
+        return [.changeTokenExpired, .zoneNotFound, .userDeletedZone].contains(error.code)
+      })
+    return copy.records
+  }
+
+  /// Copies each of the record's assets into the record's own folder and
+  /// points the record at the copy. An asset that cannot be copied is left
+  /// as CloudKit gave it.
+  private static func keepAssets(of record: CKRecord, in assets: URL) {
+    let folder = folder(record.recordID.recordName, in: assets)
+    for key in record.allKeys() {
+      guard let source = (record[key] as? CKAsset)?.fileURL else { continue }
+      let file = folder.appendingPathComponent(key)
+      do {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: file)
+        try FileManager.default.copyItem(at: source, to: file)
+        record[key] = CKAsset(fileURL: file)
+      } catch {}
+    }
+  }
+}
+
+/// The folder that holds one record's assets. The name is percent-encoded,
+/// since a record's name may hold a `/`.
+private func folder(_ name: String, in assets: URL) -> URL {
+  assets.appendingPathComponent(
+    name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? name)
 }
