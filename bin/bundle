@@ -6,13 +6,13 @@
 #   bin/bundle [board-ref] [attention-ref]
 #
 # Each ref defaults to origin/main of the checkout BOARD_SRC or ATTENTION
-# names. When unset, they are the crumbkit/board checkout at ~/Code/board and
+# names. When unset, they are the crumbkit/board checkout at ~/Code/crumbverse/board and
 # ~/Code/board-attention. The checkouts' working
 # trees are only read through git, so their branch and changes do not matter.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-board_src=${BOARD_SRC:-$HOME/Code/board}
+board_src=${BOARD_SRC:-$HOME/Code/crumbverse/board}
 attention=${ATTENTION:-$HOME/Code/board-attention}
 
 git -C "$board_src" fetch -q origin

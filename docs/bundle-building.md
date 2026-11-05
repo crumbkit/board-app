@@ -2,7 +2,7 @@
 
 - `bin/bundle [board-ref] [attention-ref]` writes `Bundle/board`. Each ref
   defaults to `origin/main` of the crumbkit/board checkout at
-  `~/Code/board` and `~/Code/board-attention`; `BOARD_SRC` and `ATTENTION` name other checkouts. It reads them through git,
+  `~/Code/crumbverse/board` and `~/Code/board-attention`; `BOARD_SRC` and `ATTENTION` name other checkouts. It reads them through git,
   so their working trees do not matter. It refuses to run while `Sources/`,
   `Install/`, `Package.swift` or `Package.resolved` has uncommitted changes.
 - It needs cargo, jq, rsync, the Swift toolchain and `claude`, which
