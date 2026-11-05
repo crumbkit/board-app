@@ -1,0 +1,87 @@
+{
+  "schema": "board/call-report/v2",
+  "data": {
+    "capability": "open",
+    "plugin": "plans",
+    "output": {
+      "questions": [
+        {
+          "asked": "2026-10-25T12:48:00Z",
+          "blocks": "Tasks v2 PRs 3 to 5 (write calls, sweep skill, removing tasks.next and tasks.due), which build on these two.",
+          "options": [
+            {
+              "id": "merge",
+              "text": "Merge #294, then #297; I install the new board binary and start PR 3"
+            },
+            {
+              "id": "hold",
+              "text": "Hold them; I want to look first"
+            }
+          ],
+          "path": "/projects/board/questions/20261025T1248Z-5f31",
+          "question": "May crumbkit/board#294 (shared repo-listing and day helpers moved into python/board-plugin) and then #297 (tasks/task/v2 Markdown tasks and the tasks.available call, which syncs in-scope repos with a 5 s deadline and keeps each context's tasks in its silo) be merged? Before #297 merges, please check one thing in Reflect on your phone: it shows a tasks/ folder, and it keeps a task file's frontmatter when you edit the task.",
+          "recommendation": "merge",
+          "session": "local_31dd8fcd-6180-489e-80e9-e63391b9ac05"
+        },
+        {
+          "asked": "2026-10-25T14:43:23Z",
+          "blocks": "Tasks v2 PR 4 (the sweep skill) and PR 5 (removing tasks.next and tasks.due), which build on the write calls.",
+          "options": [
+            {
+              "id": "merge",
+              "text": "Merge #302; I install the new board binary and start PR 4"
+            },
+            {
+              "id": "hold",
+              "text": "Hold it; I want to look first"
+            }
+          ],
+          "path": "/projects/board/questions/20261025T1443Z-9c62",
+          "question": "May crumbkit/board#302 (tasks v2 write calls: tasks.add, done, defer, drop and reviewed edit task frontmatter in place, sync before writing and push after, and keep each context's tasks in its silo) be merged? Two choices I made for you: done never moves a repeating task earlier than its defer, and add refuses when two notes repos cover the remote. After it merges, please check that Reflect handles a task file these calls wrote (values are quoted, such as status: \"done\").",
+          "recommendation": "merge",
+          "session": "local_31dd8fcd-6180-489e-80e9-e63391b9ac05"
+        },
+        {
+          "asked": "2026-10-24T18:30:00Z",
+          "blocks": null,
+          "options": [
+            {
+              "id": "a",
+              "text": "The report alone holds the token use."
+            },
+            {
+              "id": "b",
+              "text": "review.run also writes a runs/run/v1 in the author's board, one suite per repository and kind, with tokens and cost as measures."
+            }
+          ],
+          "path": "/projects/board/questions/20261024T1830Z-1213",
+          "question": "Review control decision 3: how are review runs recorded?",
+          "recommendation": "b",
+          "session": "local_745521c7-4d23-41fb-87e9-492902b65f9f"
+        },
+        {
+          "asked": "2026-10-24T18:30:00Z",
+          "blocks": null,
+          "options": [
+            {
+              "id": "a",
+              "text": "Merge it."
+            },
+            {
+              "id": "b",
+              "text": "Hold it."
+            }
+          ],
+          "path": "/projects/crumbkit-go/questions/20261024T1830Z-d653",
+          "question": "Review and merge crumbkit-go PR 6, the Listings PR? It has been open since 2026-10-19.",
+          "recommendation": null,
+          "session": "local_b1a26257-f649-49c0-b715-c18d03761dc4"
+        }
+      ],
+      "total": 4,
+      "truncated": false,
+      "unreadable": 0
+    }
+  },
+  "failures": []
+}

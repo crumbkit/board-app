@@ -16,9 +16,9 @@ update the doc it changes.
 
 ## What comes next
 
-The phone will show pending requests and approve them with Face ID. That is
-not built yet. The Mac app already carries a Board release; see
-docs/bundle.md.
+The phone shows pending requests and approves them with Face ID, and
+answers agents' questions. Push notifications are not built yet. The Mac
+app already carries a Board release; see docs/bundle.md.
 
 ## Gates
 

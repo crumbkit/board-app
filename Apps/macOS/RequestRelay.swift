@@ -1,6 +1,7 @@
-// Shares the personal board's pending effects and their threads with the
-// phone, hands the phone's answers to `board answer`, and puts its replies in
-// the personal board. The app starts it at launch and it runs until the app
+// Shares the personal board's pending effects and their threads, and the
+// agents' open questions, with the phone. It hands the phone's answers to
+// `board answer` or `plans.answer`, and puts its replies in the personal
+// board. The app starts it at launch and it runs until the app
 // quits, whether or not the window is open. It keeps what it last did, so the
 // window can show it. Board checks every signature.
 import CloudKit
@@ -24,6 +25,8 @@ final class RequestRelay {
   private(set) var cloudProblem: CloudProblem?
   /// Why the personal board could not be read, or nil when it could.
   private(set) var boardProblem: String?
+  /// Why `plans.open` failed, or nil when it worked, so it is logged once.
+  @ObservationIgnored private var questionProblem: String?
 
   @ObservationIgnored private let cloud = RequestCloud()
   @ObservationIgnored private var prepared = false
@@ -72,6 +75,18 @@ final class RequestRelay {
       // A reply Board could not take stays in iCloud and is tried again.
       for reply in try await cloud.replies() where await put(reply) {
         try await cloud.finish(reply)
+      }
+      // A failed listing leaves the shared questions as they were.
+      if let questions = await openQuestions() { try await cloud.share(questions) }
+      for answer in try await cloud.questionAnswers() {
+        switch await record(answer) {
+        case .recorded: try await cloud.finish(answer)
+        case .refused(let failure):
+          try await cloud.finish(answer, refused: QuestionRefused(answer: answer, failure: failure))
+        // An answer Board neither took nor refused stays in iCloud and is
+        // tried again.
+        case .failed: break
+        }
       }
     } catch {
       let problem = CloudProblem(error)
@@ -199,6 +214,71 @@ final class RequestRelay {
     } catch {
       log("board answer \(answer.id) failed: \(error.localizedDescription)")
       return false
+    }
+  }
+
+  /// The open questions `plans.open` lists, each named by the board it
+  /// concerns, or nil when Board could not list them, such as a Board
+  /// without `plans.open`. Requests are relayed either way.
+  private func openQuestions() async -> [Question]? {
+    var questions: [Question]
+    do {
+      let report = try await runProcess(
+        board, ["--personal", "call", "plans.open", "--limit", "1000", "--json"])
+      questions = try Question.open(report: report)
+      questionProblem = nil
+    } catch {
+      let problem = "Board could not list open questions: \(error.localizedDescription)"
+      if problem != questionProblem { log(problem) }
+      questionProblem = problem
+      return nil
+    }
+    let root = try? PersonalBoard.root()
+    var names: [String: String] = [:]
+    for index in questions.indices {
+      let mount = questions[index].mount
+      let key = mount ?? ""
+      if names[key] == nil { names[key] = await boardName(mount: mount, root: root) }
+      questions[index].boardName = names[key] ?? ""
+    }
+    return questions
+  }
+
+  /// The git remote of the mount's repository, or the personal board's when
+  /// the question has no mount. A mount whose repository the Mac cannot read
+  /// is named by its last segment.
+  private func boardName(mount: String?, root: URL?) async -> String {
+    guard let root else { return mount.map(Mount.fallbackName) ?? "" }
+    guard let mount else { return await PersonalBoard.name(root) }
+    guard let file = Mount.file(mount),
+      let record = try? await PersonalBoard.gitData(root, ["show", "HEAD:" + file]),
+      let repository = Mount.repository(record)
+    else { return Mount.fallbackName(mount) }
+    return await PersonalBoard.name(URL(fileURLWithPath: repository))
+  }
+
+  private enum Outcome {
+    case recorded
+    case refused(BoardFailure)
+    case failed
+  }
+
+  /// Runs `plans.answer` with the phone's answer. Board's refusal is what it
+  /// prints on stdout with `--json`.
+  private func record(_ answer: QuestionAnswer) async -> Outcome {
+    do {
+      _ = try await runProcess(board, answer.arguments)
+      return .recorded
+    } catch let failure as ProcessFailure {
+      if let refusal = try? BoardFailure(json: failure.stdout), refusal.isFinal {
+        log("Board refused the answer to \(answer.path): \(refusal.code)")
+        return .refused(refusal)
+      }
+      log("plans.answer \(answer.path) failed: \(failure.localizedDescription)")
+      return .failed
+    } catch {
+      log("plans.answer \(answer.path) failed: \(error.localizedDescription)")
+      return .failed
     }
   }
 

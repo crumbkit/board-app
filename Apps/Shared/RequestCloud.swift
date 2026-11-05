@@ -1,7 +1,8 @@
-// Pending effects, their threads, answers and replies in the owner's private
-// iCloud database, zone `Requests` (docs/sync.md). The Mac shares what waits
-// in the personal board; the phone reads it and writes answers and replies;
-// the Mac hands each answer to `board answer` and each reply to `board put`,
+// Pending effects, their threads, answers and replies, and the agents' open
+// questions and their answers, in the owner's private iCloud database, zone
+// `Requests` (docs/sync.md). The Mac shares what waits in the personal board;
+// the phone reads it and writes answers and replies; the Mac hands each
+// answer to `board answer` or `plans.answer` and each reply to `board put`,
 // and removes the records.
 import CloudKit
 import Foundation
@@ -227,6 +228,87 @@ struct RequestCloud: Sendable {
   /// Removes a reply once the Mac has tried to put it.
   func finish(_ reply: PhoneReply) async throws {
     try await modify(saving: [], deleting: [name(reply.name)])
+  }
+
+  // MARK: Questions
+
+  /// Makes the zone hold exactly `questions`, each as a `Question` named by
+  /// its id. A question whose fields are unchanged is not saved again.
+  func share(_ questions: [Question]) async throws {
+    let existing = try await all()
+    var saving: [CKRecord] = []
+    for question in questions {
+      let fields = question.fields
+      if let record = existing[question.id], record.recordType == "Question",
+        Set(record.allKeys()).union(fields.keys).allSatisfy({
+          record[$0] as? String == fields[$0]
+        })
+      {
+        continue
+      }
+      let record = CKRecord(recordType: "Question", recordID: name(question.id))
+      for (key, value) in fields { record[key] = value }
+      saving.append(record)
+    }
+    let listed = Set(questions.map(\.id))
+    let stale = existing.values.filter { $0.recordType == "Question" }
+      .map(\.recordID).filter { !listed.contains($0.recordName) }
+    guard !saving.isEmpty || !stale.isEmpty else { return }
+    try await modify(saving: saving, deleting: stale)
+  }
+
+  /// The questions the Mac shared. A record not named by its path is left out.
+  func questions() async throws -> [Question] {
+    try await all().values.compactMap { record in
+      guard record.recordType == "Question" else { return nil }
+      return Question(name: record.recordID.recordName, fields: strings(record))
+    }
+  }
+
+  /// Sends the owner's answer to a question for the Mac to record.
+  func answer(_ answer: QuestionAnswer) async throws {
+    let record = CKRecord(recordType: "QuestionAnswer", recordID: name(answer.name))
+    for (key, value) in answer.fields { record[key] = value }
+    try await modify(saving: [record], deleting: [])
+  }
+
+  /// Every answer to a question the phone wrote, whether or not the question
+  /// is still shared.
+  func questionAnswers() async throws -> [QuestionAnswer] {
+    try await all().values.compactMap { record in
+      guard record.recordType == "QuestionAnswer" else { return nil }
+      return QuestionAnswer(name: record.recordID.recordName, fields: strings(record))
+    }
+  }
+
+  /// Removes an answer once Board recorded it, or once Board refused it, in
+  /// which case the refusal is saved in the same call for the phone to show.
+  func finish(_ answer: QuestionAnswer, refused: QuestionRefused? = nil) async throws {
+    var saving: [CKRecord] = []
+    if let refused {
+      let record = CKRecord(recordType: "QuestionRefused", recordID: name(refused.name))
+      for (key, value) in refused.fields { record[key] = value }
+      saving.append(record)
+    }
+    try await modify(saving: saving, deleting: [name(answer.name)])
+  }
+
+  /// Board's refusals of answers sent from the phone.
+  func refusals() async throws -> [QuestionRefused] {
+    try await all().values.compactMap { record in
+      guard record.recordType == "QuestionRefused" else { return nil }
+      return QuestionRefused(name: record.recordID.recordName, fields: strings(record))
+    }
+  }
+
+  /// Removes a refusal once the phone has shown it.
+  func finish(_ refused: QuestionRefused) async throws {
+    try await modify(saving: [], deleting: [name(refused.name)])
+  }
+
+  /// A record's string fields.
+  private func strings(_ record: CKRecord) -> [String: String] {
+    record.allKeys().reduce(into: [:]) { fields, key in fields[key] = record[key] as? String }
   }
 
   private func name(_ name: String) -> CKRecord.ID {

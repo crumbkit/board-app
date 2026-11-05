@@ -187,17 +187,25 @@ private func capitalized(_ word: String) -> String {
   word.prefix(1).uppercased() + word.dropFirst()
 }
 
-/// The requests waiting, newest first, and the boards they wait in.
+/// The questions and requests waiting, each newest first, and the boards
+/// they wait in.
 public struct Inbox: Sendable {
   public let requests: [Request]
+  /// Newest first, by path when two were asked at the same time.
+  public let questions: [Question]
 
-  public init(_ requests: [Request]) {
+  public init(_ requests: [Request], questions: [Question] = []) {
     self.requests = requests.sorted { ($0.asked, $1.id) > ($1.asked, $0.id) }
+    let distant = Date.distantPast
+    self.questions = questions.sorted {
+      ($0.askedDate ?? distant, $1.path) > ($1.askedDate ?? distant, $0.path)
+    }
   }
 
-  /// Each board with requests waiting and how many, by name.
+  /// Each board with questions or requests waiting and how many, by name.
   public var boards: [(name: String, count: Int)] {
-    Dictionary(grouping: requests, by: \.boardName)
+    let names = requests.map(\.boardName) + questions.map(\.boardName)
+    return Dictionary(grouping: names, by: { $0 })
       .map { ($0.key, $0.value.count) }
       .sorted { $0.name < $1.name }
   }
@@ -205,6 +213,16 @@ public struct Inbox: Sendable {
   /// The requests in `board`, or in every board when it is nil.
   public func requests(in board: String?) -> [Request] {
     board.map { name in requests.filter { $0.boardName == name } } ?? requests
+  }
+
+  /// The questions in `board`, or in every board when it is nil.
+  public func questions(in board: String?) -> [Question] {
+    board.map { name in questions.filter { $0.boardName == name } } ?? questions
+  }
+
+  /// How many questions and requests wait in `board`, or in every board.
+  public func count(in board: String?) -> Int {
+    requests(in: board).count + questions(in: board).count
   }
 }
 

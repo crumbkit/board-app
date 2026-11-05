@@ -27,9 +27,12 @@ The owner does each of these once:
 - Deploy the container's schema from Development to Production in the
   CloudKit Dashboard. Production makes no record type on first use, so the
   types and fields must first exist in Development. With both apps built for
-  Development, pair, approve one request, refuse one with a reason, and share
-  a put that replaces an existing value. The Dashboard should then list
-  PairingRequest, PairingChallenge, PairingGrant, Request, Shared and Answer.
+  Development, pair, approve one request, refuse one with a reason, reply to
+  one, share a put that replaces an existing value, answer one question, and
+  answer one again from the phone after it was answered elsewhere. The
+  Dashboard should then list PairingRequest, PairingChallenge, PairingGrant,
+  Request, Shared, Answer, Reply, Question, QuestionAnswer and
+  QuestionRefused. Deploy again after a change adds a record type or field.
 - Answer the export compliance question. App Store Connect asks it for every
   build until `ITSAppUsesNonExemptEncryption` is set in `project.yml`. The
   app signs with the Secure Enclave and checks signatures.

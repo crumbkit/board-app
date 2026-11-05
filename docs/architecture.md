@@ -13,7 +13,8 @@
 - `Requests`: how the phone words a pending effect, orders the inbox,
   counts each board, diffs a put line by line or field by field, reads a
   request's thread of versions and replies, encodes a reply, and reads the
-  answers Board recorded. Pure logic.
+  answers Board recorded, and reads and answers agents' questions
+  ([questions](sync-questions.md)). Pure logic.
 - `Launcher`: the launcher's contract, screen model, provider runner and
   config check ([launcher](launcher.md)). Pure logic, with no AppKit.
 - `attention-sign`: the Mac command that shows a statement and signs it
@@ -22,15 +23,16 @@
 ## Apps
 
 - `Apps/iOS`: the iPhone and iPad app. It pairs with the Mac; once paired,
-  it opens on the inbox, and a request opens as a thread of its versions and
-  replies. In a regular width in landscape, as on the open iPhone Duo, the
-  thread sits beside the request list. A half-folded iPhone Duo shows the
-  inbox's tabletop layout.
+  it opens on the inbox: agents' questions above requests. A request opens
+  as a thread of its versions and replies; a question opens as its options
+  and a note. On the open iPhone Duo in landscape, either sits beside the
+  list. A half-folded iPhone Duo shows the inbox's tabletop layout.
 - `Apps/macOS`: the Mac app. Its window lists what waits, what was
   answered and the paired iPhones, and opens pairing as a sheet
   ([window](window.md)). From launch until it quits, it relays pending
-  effects, threads, answers and replies between the personal board and the
-  phone. Its menu bar item and ⌃⌥Space open the launcher.
+  effects, threads, answers, replies and open questions between the
+  personal board and the phone. Its menu bar item and ⌃⌥Space open the
+  launcher.
 - `Apps/Shared`: the iCloud stores both apps use ([sync](sync.md)), and
   `AppIcon.icon`, the Icon Composer file that is both apps' icon.
 - Both are named Board, with bundle id `com.stemmacorp.board` and team

@@ -5,11 +5,13 @@ struct ProcessFailure: LocalizedError {
   let command: String
   let status: Int32
   let output: String
+  /// What the child printed to stdout, where `board --json` prints a refusal.
+  var stdout = Data()
   var errorDescription: String? { "\(command) exited \(status): \(output)" }
 }
 
 /// Runs `program` off the main thread and returns its stdout, or throws with
-/// its stderr when it exits non-zero. It reads stderr alongside stdout, so a
+/// its stderr and stdout when it exits non-zero. It reads stderr alongside stdout, so a
 /// chatty child cannot fill a pipe and stall, and stops a child that runs
 /// longer than 60 seconds.
 func runProcess(_ program: URL, _ arguments: [String], input: Data? = nil) async throws -> Data {
@@ -43,7 +45,7 @@ private func runBlocking(_ program: URL, _ arguments: [String], input: Data?) th
   guard process.terminationStatus == 0 else {
     throw ProcessFailure(
       command: program.lastPathComponent, status: process.terminationStatus,
-      output: String(decoding: message.data, as: UTF8.self))
+      output: String(decoding: message.data, as: UTF8.self), stdout: data)
   }
   return data
 }

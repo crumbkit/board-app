@@ -1,4 +1,5 @@
-// The requests the Mac shared, as the inbox shows them, and their threads.
+// The questions and requests the Mac shared, as the inbox shows them, the
+// requests' threads, and Board's refusals of answers to questions.
 import Foundation
 import Requests
 
@@ -19,6 +20,20 @@ final class PhoneRequests {
   private var threads: [String: RequestThread] = [:]
   /// Replies sent from this phone, shown until Board holds them.
   private(set) var sent: [PhoneReply] = []
+  /// Questions answered here, by id, marked as sending until they leave the
+  /// list or Board refuses the answer.
+  private(set) var answering: Set<String> = []
+  /// Every question read since launch, so a question screen still has its
+  /// question while it closes.
+  private var knownQuestions: [String: Question] = [:]
+  /// When an answer to a question was last sent, which shows the banner.
+  private(set) var answerSent: Date?
+  /// Board's refusals not yet shown, oldest first. The inbox shows the first
+  /// as an alert.
+  private(set) var refusals: [QuestionRefused] = []
+  /// Refusals shown here, so one is not shown again while its record is
+  /// being deleted.
+  private var shown: [QuestionRefused] = []
   private let cloud: RequestCloud?
 
   init() {
@@ -28,10 +43,16 @@ final class PhoneRequests {
 
   /// Fixed requests and threads that never refresh, for previews.
   init(
-    preview requests: [Request], threads: [String: RequestThread] = [:], shared: Date? = Date()
+    preview requests: [Request], questions: [Question] = [],
+    threads: [String: RequestThread] = [:], shared: Date? = Date(),
+    answering: Set<String> = [], refusals: [QuestionRefused] = []
   ) {
-    inbox = Inbox(requests)
+    inbox = Inbox(requests, questions: questions)
     known = Dictionary(requests.map { ($0.id, $0) }) { a, _ in a }
+    knownQuestions = Dictionary(questions.map { ($0.id, $0) }) { a, _ in a }
+    self.answering = answering
+    self.refusals = refusals
+    answerSent = answering.isEmpty ? nil : Date()
     self.threads = threads
     self.shared = shared
     cloud = nil
@@ -55,8 +76,9 @@ final class PhoneRequests {
     }
   }
 
-  /// Reads the requests again. A failed read keeps the list as it was, and the
-  /// inbox says how old it is once the Mac's stamp is old enough.
+  /// Reads the requests and questions again. A failed read keeps the list as
+  /// it was, and the inbox says how old it is once the Mac's stamp is old
+  /// enough.
   func refresh() async {
     guard let cloud, let read = try? await cloud.requests() else { return }
     var requests: [Request] = []
@@ -65,9 +87,43 @@ final class PhoneRequests {
       requests.append(request)
       threads[request.id] = shared.thread(for: request)
     }
-    inbox = Inbox(RequestThread.latestOnly(requests, threads: threads))
+    let questions = (try? await cloud.questions()) ?? inbox.questions
+    inbox = Inbox(RequestThread.latestOnly(requests, threads: threads), questions: questions)
     for request in inbox.requests { known[request.id] = request }
+    for question in questions { knownQuestions[question.id] = question }
+    // A question that left the list no longer needs its sending mark.
+    answering.formIntersection(questions.map(\.id))
     shared = read.shared
+    for refused in (try? await cloud.refusals()) ?? [] where !shown.contains(refused) {
+      answering.remove(refused.question)
+      if !refusals.contains(refused) { refusals.append(refused) }
+    }
+  }
+
+  /// The question with this id, waiting or read earlier.
+  func question(_ id: String) -> Question? { knownQuestions[id] }
+
+  /// Sends the owner's answer to a question. It is not signed. The question
+  /// stays in the list, marked as sending, until the Mac records the answer.
+  func answer(_ question: Question, choice: QuestionChoice?, note: String) async throws {
+    guard !answering.contains(question.id),
+      let answer = QuestionAnswer(question: question, choice: choice, note: note)
+    else { return }
+    try await cloud?.answer(answer)
+    answering.insert(question.id)
+    answerSent = Date()
+  }
+
+  /// Hides the banner that says an answer was sent.
+  func hideAnswerSent() { answerSent = nil }
+
+  /// Drops the refusal the inbox has shown, and deletes its record so it is
+  /// shown once.
+  func dismissRefusal() {
+    guard !refusals.isEmpty else { return }
+    let refused = refusals.removeFirst()
+    shown.append(refused)
+    Task { try? await cloud?.finish(refused) }
   }
 
   /// The request with this id, waiting or read earlier.

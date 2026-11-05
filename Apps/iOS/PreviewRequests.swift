@@ -168,9 +168,93 @@ enum PreviewRequests {
   }
 }
 
+/// Real questions from `plans.open`, all under `/projects/` in the personal
+/// board: two merge questions in a mounted board, a review decision with a
+/// note, and a question with no recommendation.
+enum PreviewQuestions {
+  static let merge = Question(
+    path: "/projects/board/questions/20261025T1248Z-5f31",
+    question:
+      "May crumbkit/board#294 (shared repo-listing and day helpers moved into python/board-plugin) and then #297 (tasks/task/v2 Markdown tasks and the tasks.available call, which syncs in-scope repos with a 5 s deadline and keeps each context's tasks in its silo) be merged? Before #297 merges, please check one thing in Reflect on your phone: it shows a tasks/ folder, and it keeps a task file's frontmatter when you edit the task.",
+    asked: "2026-10-25T12:48:00Z",
+    session: "local_31dd8fcd-6180-489e-80e9-e63391b9ac05",
+    options: [
+      .init(
+        id: "merge", text: "Merge #294, then #297; I install the new board binary and start PR 3"),
+      .init(id: "hold", text: "Hold them; I want to look first"),
+    ],
+    recommendation: "merge",
+    blocks:
+      "Tasks v2 PRs 3 to 5 (write calls, sweep skill, removing tasks.next and tasks.due), which build on these two.",
+    why:
+      "Two clean-context Opus reviews ran, and the second found nothing that must be fixed. All 7 CI checks pass on #294 (88337546) and #297 (49f7297b). #294 adds 37 net lines and #297 adds 593. Measured with one GitHub remote, a warm call takes 0.76 s at the median and 0.84 to 0.97 s at p95, within the 1.0 s budget. A cold call took 1.13 s at p95, and several remotes were not measured (/evals/tasks-available-latency). A hung remote makes later calls take about 5 s, and the README says so. Bounding Board's git fetch is a separate follow-up PR. Board's AGENTS.md leaves merges to the owner.",
+    mount: "/repos/board",
+    boardName: "crumbkit/board")
+
+  static let mergeWrites = Question(
+    path: "/projects/board/questions/20261025T1443Z-9c62",
+    question:
+      "May crumbkit/board#302 (tasks v2 write calls: tasks.add, done, defer, drop and reviewed edit task frontmatter in place, sync before writing and push after, and keep each context's tasks in its silo) be merged? Two choices I made for you: done never moves a repeating task earlier than its defer, and add refuses when two notes repos cover the remote. After it merges, please check that Reflect handles a task file these calls wrote (values are quoted, such as status: \"done\").",
+    asked: "2026-10-25T14:43:23Z",
+    session: "local_31dd8fcd-6180-489e-80e9-e63391b9ac05",
+    options: [
+      .init(id: "merge", text: "Merge #302; I install the new board binary and start PR 4"),
+      .init(id: "hold", text: "Hold it; I want to look first"),
+    ],
+    recommendation: "merge",
+    blocks:
+      "Tasks v2 PR 4 (the sweep skill) and PR 5 (removing tasks.next and tasks.due), which build on the write calls.",
+    why:
+      "Three clean-context Opus reviews ran, and the last approved. Fixed along the way: weekdays skipping Monday, writes to a mount that is not a notes repo, a crash on a task that fails its schema, a retry applying done twice, done moving a task earlier, and a work task silently routed to personal when the origin was unreadable. All 7 CI checks pass on 7b40c6fc. Net +483 production lines against a planned 250, mostly retry handling shared with notes and the input descriptions. Board's AGENTS.md leaves merges to the owner.",
+    mount: "/repos/board",
+    boardName: "crumbkit/board")
+
+  static let review = Question(
+    path: "/projects/board/questions/20261024T1830Z-1213",
+    question:
+      "Review control decision 3: how are review runs recorded?",
+    asked: "2026-10-24T18:30:00Z",
+    session: "local_745521c7-4d23-41fb-87e9-492902b65f9f",
+    options: [
+      .init(id: "a", text: "The report alone holds the token use."),
+      .init(
+        id: "b",
+        text:
+          "review.run also writes a runs/run/v1 in the author's board, one suite per repository and kind, with tokens and cost as measures."
+      ),
+    ],
+    recommendation: "b",
+    why:
+      "B costs one put, keeps a local record of every run including unposted re-rolls, and lets runs.trend show review spend.",
+    note:
+      "The design is at /Users/ana/.local/share/orchestrator/2026-10-24/review-control-design.md, Part 3.",
+    boardName: "owner/board")
+
+  static let listings = Question(
+    path: "/projects/crumbkit-go/questions/20261024T1830Z-d653",
+    question:
+      "Review and merge crumbkit-go PR 6, the Listings PR? It has been open since 2026-10-19.",
+    asked: "2026-10-24T18:30:00Z",
+    session: "local_b1a26257-f649-49c0-b715-c18d03761dc4",
+    options: [.init(id: "a", text: "Merge it."), .init(id: "b", text: "Hold it.")],
+    boardName: "owner/board")
+
+  static var all: [Question] { [merge, mergeWrites, review, listings] }
+
+  /// Board's refusal of an answer to a question answered elsewhere first.
+  static let alreadyAnswered = QuestionRefused(
+    question: merge.id, code: "plans::answer::already_answered",
+    message: "\(merge.path) already has an answer, so nothing was recorded")
+}
+
 /// Launch options that open the app on these requests instead of iCloud's,
 /// for screenshots in the Simulator. `-fixtures` turns them on; `-open task`
-/// opens a request by its name here, `-boards` opens on the Boards list,
+/// opens a request or question by its name here (`merge`, `decision` or
+/// `listings` for a question), `-choose b` chooses an
+/// option on the open question (or `other`), `-note text` types a note,
+/// `-sent` marks the first question as sending with the banner, `-refused`
+/// shows the Already Answered alert, `-empty` shows nothing waiting,
+/// `-boards` opens on the Boards list,
 /// `-scroll top` opens a thread scrolled to its top, `-landscape` turns the
 /// screen to landscape, and `-sheet sign` or
 /// `-sheet refuse` opens What You Sign or the Refuse alert. Release builds
@@ -210,9 +294,34 @@ enum Fixture {
     }
   }
 
+  /// The question `-open` names.
+  static var openQuestion: Question? {
+    switch on ? value("-open") : nil {
+    case "merge": PreviewQuestions.merge
+    case "decision": PreviewQuestions.review
+    case "listings": PreviewQuestions.listings
+    default: nil
+    }
+  }
+
+  static var chosen: String? { on ? value("-choose") : nil }
+  static var note: String? { on ? value("-note") : nil }
+  static var empty: Bool { on && CommandLine.arguments.contains("-empty") }
+
+  static var questions: [Question] { empty ? [] : PreviewQuestions.all }
+
+  static var answering: Set<String> {
+    on && CommandLine.arguments.contains("-sent") ? [PreviewQuestions.merge.id] : []
+  }
+
+  static var refusals: [QuestionRefused] {
+    on && CommandLine.arguments.contains("-refused") ? [PreviewQuestions.alreadyAnswered] : []
+  }
+
   /// The inbox's requests, with the opened one in place of any that shares
   /// its id, as the stale task shares the task's.
   static var requests: [Request] {
+    if empty { return [] }
     guard let open else { return PreviewRequests.all }
     return PreviewRequests.all.filter { $0.id != open.id } + [open]
   }

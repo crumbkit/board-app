@@ -13,7 +13,10 @@ struct BoardApp: App {
     WindowGroup {
       if Fixture.on {
         InboxView(
-          requests: PhoneRequests(preview: Fixture.requests, threads: PreviewRequests.threads)
+          requests: PhoneRequests(
+            preview: Fixture.requests, questions: Fixture.questions,
+            threads: PreviewRequests.threads, answering: Fixture.answering,
+            refusals: Fixture.refusals)
         )
         .task { await Fixture.turn() }
       } else if paired {

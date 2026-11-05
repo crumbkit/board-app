@@ -22,6 +22,8 @@ need no server and no shared network. Both must use the same Apple Account.
 
 Zone `Requests` carries pending effects and their threads to the phone, and
 answers and replies back. [Requests](sync-requests.md) has the records.
+It also carries the agents' open questions and the owner's answers
+([questions](sync-questions.md)).
 
 A build without the iCloud entitlement, such as an unsigned one, makes no
 container. The Mac still lists what waits, logs once that iCloud is
