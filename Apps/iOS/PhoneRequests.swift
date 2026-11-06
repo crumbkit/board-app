@@ -133,12 +133,23 @@ final class PhoneRequests {
 
   /// Sends the owner's answer to a question. It is not signed. The question
   /// stays in the list, marked as sending, until the Mac records the answer.
+  /// The mark starts before the save, so a second tap during the save sends
+  /// nothing, and a save that throws clears it so the owner can try again.
   func answer(_ question: Question, choice: QuestionChoice?, note: String) async throws {
     guard !answering.contains(question.id),
       let answer = QuestionAnswer(question: question, choice: choice, note: note)
     else { return }
-    try await cloud?.answer(answer)
     answering.insert(question.id)
+    do {
+      try await cloud?.answer(answer)
+    } catch {
+      answering.remove(question.id)
+      log.error(
+        "The answer to \(answer.path, privacy: .public) was not saved: \(error.localizedDescription, privacy: .public)"
+      )
+      throw error
+    }
+    log.info("The answer to \(answer.path, privacy: .public) was saved")
     answerSent = Date()
   }
 

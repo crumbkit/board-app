@@ -255,6 +255,37 @@ final class QuestionTests: XCTestCase {
     XCTAssertEqual(other.text, "Closed.")
   }
 
+  // MARK: Repeated answers
+
+  /// The Mac drops an answer equal to one it already recorded, so a second
+  /// copy of the phone's record does not reach Board and come back refused.
+  func testAnAnswerSeenAgainAfterItWasRecordedIsARepeat() throws {
+    let review = try question(Self.review)
+    let answer = try XCTUnwrap(
+      QuestionAnswer(question: review, choice: .option("b"), note: "Ship it"))
+    var recorded = RecordedAnswers()
+    XCTAssertFalse(recorded.isRepeat(answer))
+    recorded.remember(answer)
+    let again = try XCTUnwrap(QuestionAnswer(name: answer.name, fields: answer.fields))
+    XCTAssertTrue(recorded.isRepeat(again))
+  }
+
+  /// A different answer to the same question still goes to Board, which
+  /// refuses it, so the phone shows the refusal.
+  func testADifferentAnswerToTheSameQuestionIsNotARepeat() throws {
+    let review = try question(Self.review)
+    let answer = try XCTUnwrap(
+      QuestionAnswer(question: review, choice: .option("b"), note: "Ship it"))
+    var recorded = RecordedAnswers()
+    recorded.remember(answer)
+    let otherChoice = try XCTUnwrap(
+      QuestionAnswer(question: review, choice: .option("a"), note: "Ship it"))
+    let otherNote = try XCTUnwrap(
+      QuestionAnswer(question: review, choice: .option("b"), note: "Wait a day"))
+    XCTAssertFalse(recorded.isRepeat(otherChoice))
+    XCTAssertFalse(recorded.isRepeat(otherNote))
+  }
+
   // MARK: Board names
 
   /// A question in a mounted board is named by that mount's repository. The

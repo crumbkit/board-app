@@ -30,6 +30,8 @@ final class RequestRelay {
 
   @ObservationIgnored private let cloud = RequestCloud()
   @ObservationIgnored private var prepared = false
+  /// The answers to questions Board recorded since the app launched.
+  @ObservationIgnored private var recordedAnswers = RecordedAnswers()
   private var board: URL { PersonalBoard.board }
 
   /// Reads the board, then shares and answers, every 10 seconds until the
@@ -79,8 +81,17 @@ final class RequestRelay {
       // A failed listing leaves the shared questions as they were.
       if let questions = await openQuestions() { try await cloud.share(questions) }
       for answer in try await cloud.questionAnswers() {
+        // A copy of an answer Board already recorded is deleted unrecorded,
+        // so Board does not refuse it as already answered.
+        if recordedAnswers.isRepeat(answer) {
+          log("Dropped a repeated answer to \(answer.path)")
+          try await cloud.finish(answer)
+          continue
+        }
         switch await record(answer) {
-        case .recorded: try await cloud.finish(answer)
+        case .recorded:
+          recordedAnswers.remember(answer)
+          try await cloud.finish(answer)
         case .refused(let failure):
           try await cloud.finish(answer, refused: QuestionRefused(answer: answer, failure: failure))
         // An answer Board neither took nor refused stays in iCloud and is
