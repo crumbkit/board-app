@@ -16,7 +16,6 @@ installs it with `install`; `INSTALL.md` beside it tells the agent how.
   repository.
 - `plugins/<name>`: every plugin on Board's main, and attention from
   board-attention, without their tests.
-- `python/board-plugin`: the library Board's plugins depend on by path.
 - `.claude-plugin/marketplace.json`: one Claude Code marketplace, `board`,
   with the hooks of controls, plans, runs and effects, and attention-approve.
 - `release.json`: the three commits, and the release id made from them.

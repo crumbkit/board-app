@@ -24,6 +24,5 @@
 - Plugins fetch their Python packages when installed, so an install needs
   the network. attention fetches board-plugin from the crumbkit/board
   repository on GitHub, so it also needs access to it.
-- attention uses board-plugin at the commit its own lock pins, from GitHub,
-  not the copy in the release.
+- attention uses board-plugin at the commit its own lock pins, from GitHub.
 - Old releases are never deleted.

@@ -40,8 +40,6 @@ echo "Building attention-sign at board-app ${app_commit:0:12}."
 stage="$work/board"
 mkdir -p "$stage/bin" "$stage/plugins" "$stage/.claude-plugin"
 cp "$repo/.build/cargo/release/board" "$repo/.build/release/attention-sign" "$stage/bin/"
-# Board's plugins reach board-plugin at ../../python/board-plugin.
-rsync -a --exclude tests/ --exclude .venv/ "$work/board-src/python/" "$stage/python/"
 for plugin in "$work"/board-src/plugins/*/; do
   rsync -a --exclude tests/ --exclude .venv/ "$plugin" "$stage/plugins/$(basename "$plugin")/"
 done
