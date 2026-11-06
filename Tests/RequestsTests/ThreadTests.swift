@@ -170,19 +170,22 @@ final class ThreadTests: XCTestCase {
 
   /// Proves a reply survives the relay's encoding: the phone's zone fields
   /// read back as the same reply on the Mac, which puts a `requests/reply/v1`
-  /// record at the path Board's thread reads. It does not run CloudKit or
-  /// `board put`.
+  /// record at the path Board's thread reads. The record names the effect as
+  /// a `sha256:` digest, while the zone fields and the path keep the bare id.
+  /// It does not run CloudKit or `board put`.
   func testAReplyRoundTripsThroughTheZoneToTheBoardRecord() throws {
     let phone = try XCTUnwrap(
       PhoneReply(effect: Self.latestID, text: "  Tuesday works.\n", sent: Self.sent))
+    XCTAssertEqual(phone.fields["effect"], Self.latestID)
     let mac = try XCTUnwrap(PhoneReply(name: phone.name, fields: phone.fields))
     XCTAssertEqual(mac, phone)
+    XCTAssertEqual(mac.effect, Self.latestID)
     XCTAssertEqual(mac.text, "Tuesday works.")
     XCTAssertEqual(mac.stamp, "20261026T190000Z")
     XCTAssertEqual(mac.path, "/requests/replies/\(Self.latestID)/20261026T190000Z")
     let record = try JSONValue.parse(mac.record)
     XCTAssertEqual(record["$type"], .string("requests/reply/v1"))
-    XCTAssertEqual(record["effect"], .string(Self.latestID))
+    XCTAssertEqual(record["effect"], .string("sha256:\(Self.latestID)"))
     XCTAssertEqual(record["text"], .string("Tuesday works."))
     if case .object(let members) = record {
       XCTAssertEqual(members.count, 3)

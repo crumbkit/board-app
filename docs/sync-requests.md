@@ -24,8 +24,10 @@ answers and replies back.
 - A reply is `Reply`, named `reply-<effect id>-<time>`, with the effect id,
   the text and the time, such as `20261030T224454Z`. The Mac puts it with
   `board --personal put /requests/replies/<effect id>/<time> --expect none`, a
-  `requests/reply/v1` record that needs no signature, then deletes it, whether
-  or not Board took it. A reply approves and refuses nothing.
+  `requests/reply/v1` record that needs no signature and names the effect as
+  `sha256:<effect id>`, then deletes it, whether or not Board took it. That
+  record needs a Board with crumbkit/board#117 or later. A reply approves and
+  refuses nothing.
 - The Mac runs `board --personal answer <id> approve --signature -` or
   `refuse --reason=…`, then deletes the answer and the request. When Board
   refuses the answer, or its request is no longer pending, the Mac deletes the

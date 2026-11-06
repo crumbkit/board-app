@@ -216,7 +216,8 @@ public struct RequestThread: Sendable {
 /// A reply the owner wrote on the phone, on its way through iCloud to the Mac,
 /// which puts it in the personal board. It approves and refuses nothing.
 public struct PhoneReply: Equatable, Sendable {
-  /// The id of the version it answers.
+  /// The id of the version it answers: 64 lowercase hex digits, without the
+  /// `sha256:` prefix.
   public let effect: String
   public let text: String
   /// When it was written, to the second.
@@ -256,10 +257,12 @@ public struct PhoneReply: Equatable, Sendable {
   /// Where the Mac puts it in the personal board.
   public var path: String { "/requests/replies/\(effect)/\(stamp)" }
 
-  /// The `requests/reply/v1` record the Mac puts there.
+  /// The `requests/reply/v1` record the Mac puts there. It names the effect
+  /// as a digest, `sha256:<id>`, because Board's stored hashes name their
+  /// algorithm.
   public var record: Data {
     let record = JSONValue.object([
-      ("$type", .string("requests/reply/v1")), ("effect", .string(effect)),
+      ("$type", .string("requests/reply/v1")), ("effect", .string("sha256:\(effect)")),
       ("text", .string(text)),
     ])
     return Data((record.pretty + "\n").utf8)
