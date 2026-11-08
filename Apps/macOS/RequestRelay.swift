@@ -9,6 +9,8 @@ import Foundation
 import Requests
 import SSHSig
 
+import struct Launcher.RunFailure
+
 @MainActor
 @Observable
 final class RequestRelay {
@@ -185,8 +187,8 @@ final class RequestRelay {
   /// What `board call requests.thread` prints for the effect, or nil when
   /// Board refuses, as a Board without the requests plugin does.
   private func thread(_ id: String) async -> Data? {
-    try? await runProcess(
-      board, ["--personal", "call", "requests.thread", "--effect", id, "--json"])
+    try? await PersonalBoard.run(
+      board.path, ["--personal", "call", "requests.thread", "--effect", id, "--json"])
   }
 
   /// Puts the phone's reply in the personal board as the owner. It is outside
@@ -195,10 +197,10 @@ final class RequestRelay {
   /// Board refuses this one with `board::put::stale`.
   private func put(_ reply: PhoneReply) async -> Bool {
     do {
-      _ = try await runProcess(
-        board, ["--personal", "put", reply.path, "--expect", "none"], input: reply.record)
+      _ = try await PersonalBoard.run(
+        board.path, ["--personal", "put", reply.path, "--expect", "none"], input: reply.record)
       return true
-    } catch let failure as ProcessFailure where failure.output.contains("board::put::stale") {
+    } catch let failure as RunFailure where failure.output.contains("board::put::stale") {
       return true
     } catch {
       log("board put \(reply.path) failed: \(error.localizedDescription)")
@@ -220,7 +222,7 @@ final class RequestRelay {
       if let reason = answer.reason, !reason.isEmpty { arguments += ["--reason=" + reason] }
     }
     do {
-      _ = try await runProcess(board, arguments, input: input)
+      _ = try await PersonalBoard.run(board.path, arguments, input: input)
       return true
     } catch {
       log("board answer \(answer.id) failed: \(error.localizedDescription)")
@@ -234,8 +236,8 @@ final class RequestRelay {
   private func openQuestions() async -> [Question]? {
     var questions: [Question]
     do {
-      let report = try await runProcess(
-        board, ["--personal", "call", "plans.open", "--limit", "1000", "--json"])
+      let report = try await PersonalBoard.run(
+        board.path, ["--personal", "call", "plans.open", "--limit", "1000", "--json"])
       questions = try Question.open(report: report)
       questionProblem = nil
     } catch {
@@ -278,9 +280,9 @@ final class RequestRelay {
   /// prints on stdout with `--json`.
   private func record(_ answer: QuestionAnswer) async -> Outcome {
     do {
-      _ = try await runProcess(board, answer.arguments)
+      _ = try await PersonalBoard.run(board.path, answer.arguments)
       return .recorded
-    } catch let failure as ProcessFailure {
+    } catch let failure as RunFailure {
       if let refusal = try? BoardFailure(json: failure.stdout), refusal.isFinal {
         log("Board refused the answer to \(answer.path): \(refusal.code)")
         return .refused(refusal)

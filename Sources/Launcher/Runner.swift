@@ -43,6 +43,9 @@ public struct RunResult: Sendable, Hashable {
 
 /// Runs one command at a time from argv. argv[0] must be an absolute path,
 /// since no shell looks the command up.
+///
+/// The command runs in a process group of its own, so a timeout or the cap
+/// stops everything it started, not only the command itself.
 public struct Runner: Sendable {
   let timeout: Duration
   let cap: Int
@@ -52,167 +55,263 @@ public struct Runner: Sendable {
     self.cap = cap
   }
 
-  public func run(_ argv: [String]) async -> RunResult {
+  /// Runs the command, writing `input` to its standard input when there is
+  /// some. Cancelling the calling task stops the command, because the
+  /// deadline's cancelled sleep returns at once, and the result then reads
+  /// as timed out. A cancelled caller's command gets SIGKILL straight after
+  /// SIGTERM, with no one-second gap, because the kill timer joins a
+  /// cancelled group.
+  public func run(_ argv: [String], input: Data? = nil) async -> RunResult {
     guard let path = argv.first, path.hasPrefix("/") else {
       return RunResult(
         argv: argv, outcome: .notStarted("argv[0] must be an absolute path"), stdout: Data(),
         stderr: Data())
     }
-    let job = Job(argv: argv, cap: cap)
-    return await withCheckedContinuation { continuation in
-      job.start(timeout: timeout) { continuation.resume(returning: $0) }
+    let out = Pipe()
+    let err = Pipe()
+    let stdin = input.map { _ in Pipe() }
+    let pid: pid_t
+    switch spawn(argv, stdin: stdin, stdout: out, stderr: err) {
+    case .failure(let reason):
+      return RunResult(
+        argv: argv, outcome: .notStarted(reason.description), stdout: Data(), stderr: Data())
+    case .success(let started):
+      pid = started
+    }
+    if let input, let stdin { send(input, to: stdin.fileHandleForWriting) }
+
+    return await withTaskGroup(of: Event.self) { group in
+      group.addTask {
+        do {
+          return .exited(.exited(status: try await exitStatus(of: pid)))
+        } catch {
+          return .exited(.notStarted(String(describing: error)))
+        }
+      }
+      group.addTask {
+        let (data, over) = await collect(out.fileHandleForReading, cap: cap)
+        return .output(.stdout, data, over: over)
+      }
+      group.addTask {
+        let (data, over) = await collect(err.fileHandleForReading, cap: cap)
+        return .output(.stderr, data, over: over)
+      }
+      group.addTask {
+        try? await Task.sleep(for: timeout)
+        return .deadline
+      }
+
+      var stdout = Data()
+      var stderr = Data()
+      var open = 2
+      var exited = false
+      var outcome: RunOutcome?
+      var killScheduled = false
+
+      /// Stops the command's whole process group: SIGTERM, then SIGKILL a
+      /// second later for anything still running.
+      func stop(_ reason: RunOutcome) {
+        outcome = reason
+        killpg(pid, SIGTERM)
+        guard !killScheduled else { return }
+        killScheduled = true
+        group.addTask {
+          try? await Task.sleep(for: .seconds(1))
+          return .kill
+        }
+      }
+
+      while let event = await group.next() {
+        switch event {
+        case .output(let stream, let data, let over):
+          switch stream {
+          case .stdout: stdout = data
+          case .stderr: stderr = data
+          }
+          open -= 1
+          if over {
+            if !exited { stop(.overCap) }
+            // A command that printed past the cap and exited at once is
+            // still over it, so cut output never reads as success.
+            outcome = .overCap
+          }
+        case .deadline:
+          if !exited && outcome == nil { stop(.timedOut) }
+        case .kill:
+          // Cancelling the group ends the wait early, so anything left
+          // behind dies when the run ends after a stop.
+          killpg(pid, SIGKILL)
+        case .exited(let ended):
+          exited = true
+          if outcome == nil { outcome = ended }
+          // A child the command left behind can hold a pipe open. Its
+          // output stops counting half a second after the command ends.
+          group.addTask {
+            try? await Task.sleep(for: .milliseconds(500))
+            return .grace
+          }
+        case .grace:
+          group.cancelAll()
+        }
+        if exited && open == 0 { group.cancelAll() }
+      }
+      return RunResult(
+        argv: argv, outcome: outcome ?? .notStarted("The command did not report an exit"),
+        stdout: stdout, stderr: stderr)
     }
   }
 }
 
-/// One running command. Its state is guarded by a lock, since the pipes and
-/// the wait for exit report on their own threads.
-///
-/// The command runs in a process group of its own, so a timeout or the cap
-/// stops everything it started, not only the command itself.
-private final class Job: @unchecked Sendable {
-  private let argv: [String]
-  private let cap: Int
-  private let lock = NSLock()
-  private let out = Pipe()
-  private let err = Pipe()
-  private var pid: pid_t = 0
-  private var stdout = Data()
-  private var stderr = Data()
-  private var open = 2
-  private var exited = false
-  private var outcome: RunOutcome?
-  private var done: (@Sendable (RunResult) -> Void)?
-
-  init(argv: [String], cap: Int) {
-    self.argv = argv
-    self.cap = cap
+/// What the tasks waiting on a running command report to the loop that holds
+/// its state.
+private enum Event: Sendable {
+  enum Stream: Sendable {
+    case stdout
+    case stderr
   }
 
-  func start(timeout: Duration, done: @escaping @Sendable (RunResult) -> Void) {
-    self.done = done
-    switch spawn() {
-    case .failure(let reason):
-      lock.withLock {
-        outcome = .notStarted(reason.description)
-        exited = true
-      }
-      finish(force: true)
-      return
-    case .success(let pid):
-      self.pid = pid
-    }
-    out.fileHandleForReading.readabilityHandler = { [self] in read($0, into: \.stdout) }
-    err.fileHandleForReading.readabilityHandler = { [self] in read($0, into: \.stderr) }
-    DispatchQueue.global().async { [self] in wait() }
-    let nanoseconds =
-      timeout.components.seconds * 1_000_000_000 + timeout.components.attoseconds
-      / 1_000_000_000
-    DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(nanoseconds))) {
-      [self] in stop(.timedOut)
-    }
-  }
+  case exited(RunOutcome)
+  case output(Stream, Data, over: Bool)
+  case deadline
+  case grace
+  case kill
+}
 
-  /// Starts the command in a new process group, with standard input from
-  /// /dev/null and no other descriptors inherited.
-  private func spawn() -> Result<pid_t, SpawnError> {
-    var attributes: posix_spawnattr_t?
-    var actions: posix_spawn_file_actions_t?
-    posix_spawnattr_init(&attributes)
-    posix_spawn_file_actions_init(&actions)
-    defer {
-      posix_spawnattr_destroy(&attributes)
-      posix_spawn_file_actions_destroy(&actions)
-    }
-    posix_spawnattr_setflags(
-      &attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT))
-    posix_spawnattr_setpgroup(&attributes, 0)
+/// Starts the command in a new process group, with standard input from
+/// `stdin` or /dev/null and no other descriptors inherited.
+private func spawn(
+  _ argv: [String], stdin: Pipe?, stdout: Pipe, stderr: Pipe
+) -> Result<pid_t, SpawnError> {
+  var attributes: posix_spawnattr_t?
+  var actions: posix_spawn_file_actions_t?
+  posix_spawnattr_init(&attributes)
+  posix_spawn_file_actions_init(&actions)
+  defer {
+    posix_spawnattr_destroy(&attributes)
+    posix_spawn_file_actions_destroy(&actions)
+  }
+  posix_spawnattr_setflags(
+    &attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_CLOEXEC_DEFAULT)
+  )
+  posix_spawnattr_setpgroup(&attributes, 0)
+  // A cooperative thread blocks most signals and the command would inherit
+  // that mask, which leaves it unable to receive SIGTERM.
+  var unblocked = sigset_t()
+  posix_spawnattr_setsigmask(&attributes, &unblocked)
+  if let stdin {
+    posix_spawn_file_actions_adddup2(&actions, stdin.fileHandleForReading.fileDescriptor, 0)
+  } else {
     posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-    posix_spawn_file_actions_adddup2(&actions, out.fileHandleForWriting.fileDescriptor, 1)
-    posix_spawn_file_actions_adddup2(&actions, err.fileHandleForWriting.fileDescriptor, 2)
-    let cArgs = argv.map { strdup($0) } + [nil]
-    defer { for arg in cArgs { free(arg) } }
-    var pid: pid_t = 0
-    let status = posix_spawn(&pid, argv[0], &actions, &attributes, cArgs, environ)
-    // The parent's write ends close either way, so the pipes reach end of
-    // file when the command and its children are done.
-    try? out.fileHandleForWriting.close()
-    try? err.fileHandleForWriting.close()
-    guard status == 0 else {
-      try? out.fileHandleForReading.close()
-      try? err.fileHandleForReading.close()
-      return .failure(SpawnError(code: status))
-    }
-    return .success(pid)
   }
-
-  private func wait() {
-    var status: Int32 = 0
-    while waitpid(pid, &status, 0) == -1, errno == EINTR {}
-    // A plain exit keeps its code; a signal reads as 128 plus its number, as
-    // shells report it.
-    let code = status & 0x7F == 0 ? (status >> 8) & 0xFF : 128 + (status & 0x7F)
-    lock.withLock {
-      exited = true
-      if outcome == nil { outcome = .exited(status: code) }
-    }
-    // A child the command left behind can hold a pipe open. Its output
-    // stops counting half a second after the command ends.
-    DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { [self] in finish(force: true) }
-    finish(force: false)
+  posix_spawn_file_actions_adddup2(&actions, stdout.fileHandleForWriting.fileDescriptor, 1)
+  posix_spawn_file_actions_adddup2(&actions, stderr.fileHandleForWriting.fileDescriptor, 2)
+  let cArgs = argv.map { strdup($0) } + [nil]
+  defer { for arg in cArgs { free(arg) } }
+  var pid: pid_t = 0
+  let status = posix_spawn(&pid, argv[0], &actions, &attributes, cArgs, environ)
+  // The parent's copies of the child's ends close either way, so the pipes
+  // reach end of file when the command and its children are done.
+  try? stdin?.fileHandleForReading.close()
+  try? stdout.fileHandleForWriting.close()
+  try? stderr.fileHandleForWriting.close()
+  guard status == 0 else {
+    try? stdin?.fileHandleForWriting.close()
+    try? stdout.fileHandleForReading.close()
+    try? stderr.fileHandleForReading.close()
+    return .failure(SpawnError(code: status))
   }
+  return .success(pid)
+}
 
-  private func read(_ handle: FileHandle, into buffer: ReferenceWritableKeyPath<Job, Data>) {
-    let data = handle.availableData
-    var over = false
-    lock.withLock {
-      if data.isEmpty {
-        handle.readabilityHandler = nil
-        open -= 1
+/// Writes `input` to the command's standard input from a thread of its own,
+/// then closes it.
+///
+/// A blocked write on this thread lasts until the command and everything
+/// holding its standard input have gone. An input larger than the pipe
+/// holds, sent to a child left behind that holds stdin and never reads, keeps
+/// one thread until that child ends. A non-blocking writer would replace
+/// this thread.
+private func send(_ input: Data, to handle: FileHandle) {
+  _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
+  Thread.detachNewThread {
+    // Nil is right here: a command that stops reading simply does not get
+    // the rest.
+    try? handle.write(contentsOf: input)
+    try? handle.close()
+  }
+}
+
+/// Waits for the command on a thread of its own, since `waitpid` blocks.
+private func exitStatus(of pid: pid_t) async throws -> Int32 {
+  try await withCheckedThrowingContinuation { continuation in
+    Thread.detachNewThread {
+      var status: Int32 = 0
+      var waited = waitpid(pid, &status, 0)
+      while waited == -1, errno == EINTR { waited = waitpid(pid, &status, 0) }
+      guard waited != -1 else {
+        continuation.resume(throwing: SpawnError(code: errno))
+        return
+      }
+      // A plain exit keeps its code; a signal reads as 128 plus its number,
+      // as shells report it.
+      continuation.resume(
+        returning: status & 0x7F == 0 ? (status >> 8) & 0xFF : 128 + (status & 0x7F))
+    }
+  }
+}
+
+/// Reads a pipe up to the cap. It returns as soon as a chunk overflows the
+/// room, and returns what it has at end of file or when cancelled.
+///
+/// Only the consumer counts bytes, so the stream's buffer can pass the cap
+/// while no cooperative thread is free to run the consumer. Counting bytes in
+/// the readability handler under an `OSAllocatedUnfairLock` and finishing the
+/// stream at the cap would replace this.
+private func collect(_ handle: FileHandle, cap: Int) async -> (Data, over: Bool) {
+  let chunks = AsyncStream<Data> { continuation in
+    continuation.onTermination = { _ in handle.readabilityHandler = nil }
+    handle.readabilityHandler = { handle in
+      let chunk = handle.availableData
+      if chunk.isEmpty {
+        continuation.finish()
       } else {
-        let room = cap - self[keyPath: buffer].count
-        self[keyPath: buffer].append(data.prefix(max(room, 0)))
-        over = data.count > room
+        continuation.yield(chunk)
       }
     }
-    if data.isEmpty {
-      finish(force: false)
-    } else if over {
-      stop(.overCap)
-    }
   }
-
-  /// Stops the command's whole process group: SIGTERM, then SIGKILL a
-  /// second later for anything still running.
-  private func stop(_ reason: RunOutcome) {
-    let running = lock.withLock {
-      guard !exited, outcome == nil else { return false }
-      outcome = reason
-      return true
-    }
-    guard running else { return }
-    let group = pid
-    killpg(group, SIGTERM)
-    DispatchQueue.global().asyncAfter(deadline: .now() + 1) { killpg(group, SIGKILL) }
+  var data = Data()
+  for await chunk in chunks {
+    let room = cap - data.count
+    data.append(chunk.prefix(max(room, 0)))
+    if chunk.count > room { return (data, over: true) }
   }
-
-  /// Hands back the result once the command has ended and both pipes have
-  /// closed, or at once when `force` is set. It hands it back only once.
-  private func finish(force: Bool) {
-    let handoff: (RunResult, @Sendable (RunResult) -> Void)? = lock.withLock {
-      guard exited, force || open == 0, let outcome, let done else { return nil }
-      self.done = nil
-      return (RunResult(argv: argv, outcome: outcome, stdout: stdout, stderr: stderr), done)
-    }
-    guard let (result, done) = handoff else { return }
-    // Output after the hand-off is not read.
-    out.fileHandleForReading.readabilityHandler = nil
-    err.fileHandleForReading.readabilityHandler = nil
-    done(result)
-  }
+  return (data, over: false)
 }
 
 private struct SpawnError: Error, CustomStringConvertible {
   let code: Int32
   var description: String { String(cString: strerror(code)) }
+}
+
+/// A command that did not exit 0, with what it printed.
+public struct RunFailure: LocalizedError, Sendable {
+  /// The last path component of the command.
+  let command: String
+  /// What went wrong, in a sentence.
+  let problem: String
+  /// Standard error, as text.
+  public let output: String
+  /// Standard output, where `board --json` prints a refusal.
+  public let stdout: Data
+  public var errorDescription: String? { "\(command): \(problem): \(output)" }
+}
+
+extension RunResult {
+  /// Standard output when the command exited 0.
+  public func output() throws(RunFailure) -> Data {
+    guard let problem else { return stdout }
+    throw RunFailure(
+      command: URL(fileURLWithPath: argv.first ?? "").lastPathComponent, problem: problem,
+      output: String(decoding: stderr, as: UTF8.self), stdout: stdout)
+  }
 }

@@ -5,6 +5,8 @@ import Foundation
 import Requests
 import SSHSig
 
+import struct Launcher.Runner
+
 /// A request the owner answered, with when Board recorded the answer.
 struct AnsweredRequest: Identifiable, Sendable {
   let request: Request
@@ -16,6 +18,10 @@ struct AnsweredRequest: Identifiable, Sendable {
 enum PersonalBoard {
   static let home = FileManager.default.homeDirectoryForCurrentUser
   static var board: URL { home.appendingPathComponent(".local/bin/board") }
+
+  /// Runs git and Board for the relay. A hung call is killed at 60 seconds
+  /// and one that prints more than 16 MB is stopped.
+  private static let runner = Runner(timeout: .seconds(60), cap: 16_000_000)
 
   /// The personal board's root, from Board's config.
   static func root() throws -> URL {
@@ -86,6 +92,15 @@ enum PersonalBoard {
   }
 
   static func gitData(_ directory: URL, _ arguments: [String]) async throws -> Data {
-    try await runProcess(URL(fileURLWithPath: "/usr/bin/git"), ["-C", directory.path] + arguments)
+    try await run("/usr/bin/git", ["-C", directory.path] + arguments)
   }
+
+  static func run(_ program: String, _ arguments: [String], input: Data? = nil) async throws -> Data
+  {
+    try await runner.run([program] + arguments, input: input).output()
+  }
+}
+
+extension String {
+  var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }
