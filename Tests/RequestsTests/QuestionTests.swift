@@ -81,6 +81,44 @@ final class QuestionTests: XCTestCase {
     XCTAssertEqual(all[0].options.map(\.id), ["a"])
   }
 
+  // MARK: What a question blocks
+
+  /// The question `plans.open` gives with `fields` beside its path and text.
+  func question(listing fields: String) throws -> Question {
+    let report =
+      #"{"schema":"board/call-report/v2","data":{"output":{"questions":[{"path":"/p/questions/x","question":"Q","#
+      + fields + "}]}}}"
+    return try XCTUnwrap(Question.open(report: Data(report.utf8)).first)
+  }
+
+  func testAQuestionWithBlockedWorkShowsThoseWords() throws {
+    XCTAssertEqual(
+      try question(listing: #""blocks":null,"blocked_work":"The Tasks v2 PRs""#).blocks,
+      "The Tasks v2 PRs")
+  }
+
+  func testAQuestionWithAPathInBlocksShowsItsLastSegment() throws {
+    XCTAssertEqual(
+      try question(listing: #""blocks":"/changes/ship-the-app""#).blocks, "ship-the-app")
+  }
+
+  func testAQuestionWithBothShowsBlockedWork() throws {
+    XCTAssertEqual(
+      try question(listing: #""blocks":"/changes/ship-the-app","blocked_work":"The Tasks v2 PRs""#)
+        .blocks,
+      "The Tasks v2 PRs")
+  }
+
+  func testAQuestionWithOldProseInBlocksShowsTheProseUnchanged() throws {
+    XCTAssertEqual(
+      try question(listing: #""blocks":"Tasks v2 PRs 3/4, which build on these.""#).blocks,
+      "Tasks v2 PRs 3/4, which build on these.")
+  }
+
+  func testAQuestionWithNeitherHasNoBlocks() throws {
+    XCTAssertNil(try question(listing: #""blocks":null,"blocked_work":null"#).blocks)
+  }
+
   // MARK: Naming
 
   /// The record name is a hash of the path, so a path of any length or

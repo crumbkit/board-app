@@ -97,9 +97,20 @@ public struct Question: Identifiable, Equatable, Sendable {
     self.init(
       path: path, question: question, asked: item["asked"]?.string,
       session: item["session"]?.string, options: options,
-      recommendation: item["recommendation"]?.string, blocks: item["blocks"]?.string,
+      recommendation: item["recommendation"]?.string, blocks: Self.waitingOn(item),
       why: item["why"]?.string, note: item["note"]?.string, mount: item["mount"]?.string,
       contextPath: item["context_path"]?.string)
+  }
+
+  /// What waits on the answer, in words the phone can show. `blocked_work`
+  /// comes first. A path in `blocks` reads as its last segment, and any other
+  /// `blocks` is the old prose form, shown as written.
+  private static func waitingOn(_ item: JSONValue) -> String? {
+    if let work = item["blocked_work"]?.string { return work }
+    guard let blocks = item["blocks"]?.string, blocks.hasPrefix("/") else {
+      return item["blocks"]?.string
+    }
+    return blocks.split(separator: "/").last.map(String.init) ?? blocks
   }
 
   /// The option the agent recommends, or nil when it names none of them.
