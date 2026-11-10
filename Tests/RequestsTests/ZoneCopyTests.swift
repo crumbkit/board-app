@@ -12,11 +12,11 @@ final class ZoneCopyTests: XCTestCase {
   /// Batches served in order, each answering the token it expects. A batch
   /// may instead be an error to throw.
   actor Feed {
-    var batches: [Int?: Result<Copy.Batch, Error>] = [:]
+    var batches: [Int?: Result<Copy.Batch, any Error>] = [:]
     private(set) var asked: [Int?] = []
 
     func serve(_ token: Int?, _ batch: Copy.Batch) { batches[token] = .success(batch) }
-    func fail(_ token: Int?, _ error: Error) { batches[token] = .failure(error) }
+    func fail(_ token: Int?, _ error: any Error) { batches[token] = .failure(error) }
 
     func changes(since token: Int?) throws -> Copy.Batch {
       asked.append(token)

@@ -19,8 +19,10 @@ final class ManifestTests: XCTestCase {
     for case let url as URL in enumerator where !url.hasDirectoryPath {
       let name = String(url.resolvingSymlinksInPath().path.dropFirst(root.count))
       guard name != "manifest.json" else { continue }
-      found[name] = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }
-        .joined()
+      found[name] = SHA256.hash(data: try Data(contentsOf: url)).map {
+        unsafe String(format: "%02x", $0)
+      }
+      .joined()
     }
     XCTAssertEqual(found, files)
   }

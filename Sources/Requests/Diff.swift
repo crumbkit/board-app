@@ -136,7 +136,7 @@ public enum LineDiff {
     case 1: changes = "Line \(numbers[0]) changes."
     case 2...4:
       changes =
-        "Lines \(numbers.dropLast().map(String.init).joined(separator: ", ")) and \(numbers.last!) change."
+        "Lines \(numbers.dropLast().map(String.init).joined(separator: ", ")) and \(numbers[numbers.count - 1]) change."
     default: changes = "\(numbers.count) lines change."
     }
     if same == 0 { return changes }

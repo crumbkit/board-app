@@ -37,7 +37,7 @@ public struct ZoneCopy<Record: Sendable, Token: Sendable>: Sendable {
   /// empties itself and reads once more from no token.
   public mutating func read(
     changes: @Sendable (Token?) async throws -> Batch,
-    isExpired: @Sendable (Error) -> Bool
+    isExpired: @Sendable (any Error) -> Bool
   ) async throws {
     do {
       try await walk(changes)

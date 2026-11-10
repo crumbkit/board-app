@@ -66,7 +66,7 @@ public enum PairingCode {
     let digest = Array(
       SHA256.hash(data: Data("board-app/pair/v2".utf8) + x963 + phoneNonce + macNonce))
     let number = digest.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) } % 1_000_000
-    let digits = String(format: "%06u", number)
+    let digits = unsafe String(format: "%06u", number)
     return "\(digits.prefix(3)) \(digits.suffix(3))"
   }
 }
@@ -191,7 +191,7 @@ public enum AllowedSignersFile {
   /// A removal that left the device's line in some files.
   public struct RemovalFailed: LocalizedError {
     /// Each file the line may still be in, and why it was not removed.
-    public let failures: [(file: URL, error: Error)]
+    public let failures: [(file: URL, error: any Error)]
 
     public var errorDescription: String? {
       failures.map { "\($0.file.path): \($0.error.localizedDescription)" }
@@ -211,7 +211,7 @@ public enum AllowedSignersFile {
       throw RemovalFailed(failures: files.map { ($0, CocoaError(.fileWriteInvalidFileName)) })
     }
     var texts: [String] = []
-    var failures: [(file: URL, error: Error)] = []
+    var failures: [(file: URL, error: any Error)] = []
     for file in files {
       do {
         texts.append(try read(file))
@@ -277,7 +277,8 @@ public enum AllowedSignersFile {
       ".\(target.lastPathComponent).\(UUID().uuidString)")
     // Made with the file's mode, refusing a link or an existing file there,
     // so no other user can open it before the rename.
-    let descriptor = open(temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, mode_t(mode))
+    let descriptor = unsafe open(
+      temporary.path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW, mode_t(mode))
     guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     defer { try? manager.removeItem(at: temporary) }
     let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -287,7 +288,7 @@ public enum AllowedSignersFile {
     try handle.write(contentsOf: Data(text.utf8))
     try handle.synchronize()
     try handle.close()
-    guard rename(temporary.path, target.path) == 0 else {
+    guard unsafe rename(temporary.path, target.path) == 0 else {
       throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
   }

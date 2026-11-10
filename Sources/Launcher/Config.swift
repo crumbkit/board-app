@@ -55,18 +55,18 @@ extension Config {
     let path = file.path
     // O_NOFOLLOW refuses a symlink, and the checks and the read use the one
     // descriptor, so the file cannot be swapped between them.
-    let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+    let fd = unsafe open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     guard fd >= 0 else {
       switch errno {
       case ENOENT: throw .missing(path)
       case ELOOP: throw .symlink(path)
-      default: throw .unreadable(path, String(cString: strerror(errno)))
+      default: throw .unreadable(path, unsafe String(cString: strerror(errno)))
       }
     }
     let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     var info = stat()
-    guard fstat(fd, &info) == 0 else {
-      throw .unreadable(path, String(cString: strerror(errno)))
+    guard unsafe fstat(fd, &info) == 0 else {
+      throw .unreadable(path, unsafe String(cString: strerror(errno)))
     }
     guard info.st_mode & S_IFMT == S_IFREG else { throw .unreadable(path, "it is not a file") }
     guard info.st_uid == owner else { throw .notOwned(path) }

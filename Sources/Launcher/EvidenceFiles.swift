@@ -18,7 +18,7 @@ public enum EvidenceFiles {
   /// What ↩ does with the file at `path`.
   public static func opening(_ path: String) -> FileOpening {
     var info = stat()
-    guard lstat(path, &info) == 0 else { return .missing }
+    guard unsafe lstat(path, &info) == 0 else { return .missing }
     guard info.st_mode & S_IFMT == S_IFREG, info.st_mode & 0o111 == 0 else { return .reveal }
     let ext = (path as NSString).pathExtension
     guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return .open }
@@ -29,17 +29,17 @@ public enum EvidenceFiles {
   /// The first `limit` bytes of the file at `path`, or nil unless it is a
   /// regular file. A symlink is not followed.
   public static func read(_ path: String, limit: Int = 1_000_000) -> Data? {
-    let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+    let fd = unsafe open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     guard fd >= 0 else { return nil }
     let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
     var info = stat()
-    guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
+    guard unsafe fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
     return try? handle.read(upToCount: limit) ?? Data()
   }
 
   /// Whether the path is a regular file, not following a symlink.
   public static func isRegular(_ path: String) -> Bool {
     var info = stat()
-    return lstat(path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
+    return unsafe lstat(path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG
   }
 }

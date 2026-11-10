@@ -44,7 +44,12 @@ enum PhoneKey {
       let access = SecAccessControlCreateWithFlags(
         nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet],
         &error)
-    else { throw error!.takeRetainedValue() as Error }
+    else {
+      guard let error else {
+        preconditionFailure("SecAccessControlCreateWithFlags returned nil and set no error")
+      }
+      throw error.takeRetainedValue() as Error
+    }
     return access
   }
 

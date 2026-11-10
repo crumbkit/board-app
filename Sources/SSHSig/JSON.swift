@@ -111,7 +111,7 @@ public enum JSONValue: Equatable, Sendable {
       case "\u{08}": out += "\\b"
       case "\u{0C}": out += "\\f"
       case let control where control.value < 0x20:
-        out += "\\u00" + String(format: "%02x", control.value)
+        out += unsafe "\\u00" + String(format: "%02x", control.value)
       default: out.unicodeScalars.append(scalar)
       }
     }
@@ -132,7 +132,8 @@ public enum JSONValue: Equatable, Sendable {
     let shown = "\(abs(value))".lowercased()
     let parts = shown.split(separator: "e")
     let mantissa = parts[0]
-    let exponent = parts.count > 1 ? Int(parts[1].replacingOccurrences(of: "+", with: ""))! : 0
+    guard let exponent = parts.count > 1 ? Int(parts[1].replacingOccurrences(of: "+", with: "")) : 0
+    else { preconditionFailure("Double.description wrote an exponent that is not an integer") }
     let point =
       mantissa.firstIndex(of: ".").map { mantissa.distance(from: mantissa.startIndex, to: $0) }
       ?? mantissa.count

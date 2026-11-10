@@ -82,7 +82,7 @@ public struct Effect: Equatable, Sendable {
       ("prior", prior.map(JSONValue.string) ?? .null),
     ])
     return SHA256.hash(data: Data((request.pretty + "\n").utf8))
-      .map { String(format: "%02x", $0) }.joined()
+      .map { unsafe String(format: "%02x", $0) }.joined()
   }
 
   /// What a put writes, as the statement shows it before escaping: the record
@@ -111,7 +111,7 @@ public struct Effect: Equatable, Sendable {
 /// bytes, in hex. The phone checks a prior blob the Mac shares against it.
 public func gitBlobID(_ bytes: Data) -> String {
   Insecure.SHA1.hash(data: Data("blob \(bytes.count)\0".utf8) + bytes)
-    .map { String(format: "%02x", $0) }.joined()
+    .map { unsafe String(format: "%02x", $0) }.joined()
 }
 
 /// `text` with each character that could hide or reorder what it says escaped

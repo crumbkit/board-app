@@ -6,6 +6,16 @@ import Requests
 import SSHSig
 import UIKit
 
+/// The value `parse` reads from a fixture this file writes. Every fixture is
+/// a literal that parses, so a failure is a broken invariant.
+private func fixture<Value>(_ parse: () throws -> Value) -> Value {
+  do {
+    return try parse()
+  } catch {
+    preconditionFailure("A preview fixture does not parse: \(error)")
+  }
+}
+
 enum PreviewRequests {
   static let taskBefore = """
     ---
@@ -67,8 +77,8 @@ enum PreviewRequests {
       "schema": "board/call-report/v2",
       "data": ["capability": "thread", "plugin": "requests", "output": output], "failures": [],
     ]
-    let data = try! JSONSerialization.data(withJSONObject: report)
-    return [task.id: try! RequestThread(report: data, request: task)]
+    let data = fixture { try JSONSerialization.data(withJSONObject: report) }
+    return [task.id: fixture { try RequestThread(report: data, request: task) }]
   }
 
   static let controlBefore = """
@@ -97,7 +107,7 @@ enum PreviewRequests {
 
   static var control: Request {
     let record = controlBefore.replacingOccurrences(of: "400", with: "450")
-    let json = try! JSONSerialization.jsonObject(with: Data(record.utf8))
+    let json = fixture { try JSONSerialization.jsonObject(with: Data(record.utf8)) }
     return request(
       fields: [
         "plugin": "controls", "op": "put", "path": "/controls/board-app/docs-map-budget",
@@ -160,9 +170,9 @@ enum PreviewRequests {
     object["$type"] = "board/effect/v1"
     object["board"] =
       board == "owner/board" ? "/Users/ana/Code/board" : "/Users/ana/Code/board-src"
-    let data = try! JSONSerialization.data(withJSONObject: object)
+    let data = fixture { try JSONSerialization.data(withJSONObject: object) }
     return Request(
-      effect: try! Effect(json: data), boardName: board,
+      effect: fixture { try Effect(json: data) }, boardName: board,
       asked: Date().addingTimeInterval(-minutesAgo * 60), priorContent: prior.map { Data($0.utf8) },
       current: current, currentContent: currentContent.map { Data($0.utf8) })
   }

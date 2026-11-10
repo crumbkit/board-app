@@ -73,7 +73,10 @@ import Testing
 
 @Test func a_child_left_behind_holding_a_pipe_does_not_hold_the_run() async {
   let marker = "sleep 33.\(Int.random(in: 100_000...999_999))"
-  let result = await Runner(timeout: .seconds(20)).run(["/bin/sh", "-c", "\(marker) & exit 0"])
+  let result = await Runner(timeout: .seconds(20)).run([
+    "/bin/sh", "-c", "echo before; (\(marker); echo after) & exit 0",
+  ])
   _ = await Runner().run(["/usr/bin/pkill", "-f", marker])
   #expect(result.outcome == .exited(status: 0))
+  #expect(result.stdout == Data("before\n".utf8))
 }

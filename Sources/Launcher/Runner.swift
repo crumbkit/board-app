@@ -61,6 +61,7 @@ public struct Runner: Sendable {
   /// as timed out. A cancelled caller's command gets SIGKILL straight after
   /// SIGTERM, with no one-second gap, because the kill timer joins a
   /// cancelled group.
+  @concurrent
   public func run(_ argv: [String], input: Data? = nil) async -> RunResult {
     guard let path = argv.first, path.hasPrefix("/") else {
       return RunResult(
@@ -184,31 +185,31 @@ private func spawn(
 ) -> Result<pid_t, SpawnError> {
   var attributes: posix_spawnattr_t?
   var actions: posix_spawn_file_actions_t?
-  posix_spawnattr_init(&attributes)
-  posix_spawn_file_actions_init(&actions)
+  unsafe posix_spawnattr_init(&attributes)
+  unsafe posix_spawn_file_actions_init(&actions)
   defer {
-    posix_spawnattr_destroy(&attributes)
-    posix_spawn_file_actions_destroy(&actions)
+    unsafe posix_spawnattr_destroy(&attributes)
+    unsafe posix_spawn_file_actions_destroy(&actions)
   }
-  posix_spawnattr_setflags(
+  unsafe posix_spawnattr_setflags(
     &attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_CLOEXEC_DEFAULT)
   )
-  posix_spawnattr_setpgroup(&attributes, 0)
+  unsafe posix_spawnattr_setpgroup(&attributes, 0)
   // A cooperative thread blocks most signals and the command would inherit
   // that mask, which leaves it unable to receive SIGTERM.
   var unblocked = sigset_t()
-  posix_spawnattr_setsigmask(&attributes, &unblocked)
+  unsafe posix_spawnattr_setsigmask(&attributes, &unblocked)
   if let stdin {
-    posix_spawn_file_actions_adddup2(&actions, stdin.fileHandleForReading.fileDescriptor, 0)
+    unsafe posix_spawn_file_actions_adddup2(&actions, stdin.fileHandleForReading.fileDescriptor, 0)
   } else {
-    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+    unsafe posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
   }
-  posix_spawn_file_actions_adddup2(&actions, stdout.fileHandleForWriting.fileDescriptor, 1)
-  posix_spawn_file_actions_adddup2(&actions, stderr.fileHandleForWriting.fileDescriptor, 2)
-  let cArgs = argv.map { strdup($0) } + [nil]
-  defer { for arg in cArgs { free(arg) } }
+  unsafe posix_spawn_file_actions_adddup2(&actions, stdout.fileHandleForWriting.fileDescriptor, 1)
+  unsafe posix_spawn_file_actions_adddup2(&actions, stderr.fileHandleForWriting.fileDescriptor, 2)
+  let cArgs = unsafe argv.map { unsafe strdup($0) } + [nil]
+  defer { for unsafe arg in unsafe cArgs { unsafe free(arg) } }
   var pid: pid_t = 0
-  let status = posix_spawn(&pid, argv[0], &actions, &attributes, cArgs, environ)
+  let status = unsafe posix_spawn(&pid, argv[0], &actions, &attributes, cArgs, environ)
   // The parent's copies of the child's ends close either way, so the pipes
   // reach end of file when the command and its children are done.
   try? stdin?.fileHandleForReading.close()
@@ -246,8 +247,8 @@ private func exitStatus(of pid: pid_t) async throws -> Int32 {
   try await withCheckedThrowingContinuation { continuation in
     Thread.detachNewThread {
       var status: Int32 = 0
-      var waited = waitpid(pid, &status, 0)
-      while waited == -1, errno == EINTR { waited = waitpid(pid, &status, 0) }
+      var waited = unsafe waitpid(pid, &status, 0)
+      while waited == -1, errno == EINTR { waited = unsafe waitpid(pid, &status, 0) }
       guard waited != -1 else {
         continuation.resume(throwing: SpawnError(code: errno))
         return
@@ -290,7 +291,7 @@ private func collect(_ handle: FileHandle, cap: Int) async -> (Data, over: Bool)
 
 private struct SpawnError: Error, CustomStringConvertible {
   let code: Int32
-  var description: String { String(cString: strerror(code)) }
+  var description: String { unsafe String(cString: strerror(code)) }
 }
 
 /// A command that did not exit 0, with what it printed.

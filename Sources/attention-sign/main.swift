@@ -30,11 +30,11 @@ func loadKey(context: LAContext? = nil) throws -> SecureEnclave.P256.Signing.Pri
 func makeKey() throws -> SecureEnclave.P256.Signing.PrivateKey {
   var error: Unmanaged<CFError>?
   guard
-    let access = SecAccessControlCreateWithFlags(
+    let access = unsafe SecAccessControlCreateWithFlags(
       nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet],
       &error
     )
-  else { fail("cannot describe the key's access: \(String(describing: error))") }
+  else { fail("cannot describe the key's access: \(unsafe String(describing: error))") }
   let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
   try FileManager.default.createDirectory(
     at: keyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -53,7 +53,10 @@ MainActor.assumeIsolated {
       let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
       print(AllowedSigners.macLine(x963: key.publicKey.x963Representation, comment: "attention"))
     case let command where (command == "sign" || command == "approve") && arguments.count == 2:
-      let message = try Data(contentsOf: URL(fileURLWithPath: arguments.last!))
+      guard let file = arguments.last else {
+        preconditionFailure("this case matches only when there are two arguments")
+      }
+      let message = try Data(contentsOf: URL(fileURLWithPath: file))
       guard let statement = String(data: message, encoding: .utf8) else {
         fail("the statement is not UTF-8")
       }

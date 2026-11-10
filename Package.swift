@@ -1,5 +1,27 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.2
 import PackageDescription
+
+// Logic, parsing and storage targets, and every test target.
+let baseSettings: [SwiftSetting] = [
+  .swiftLanguageMode(.v6),
+  // An async function runs on its caller's actor unless it is marked
+  // @concurrent (SE-0461).
+  .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+  // A main-actor type's conformances are main-actor too (SE-0470).
+  .enableUpcomingFeature("InferIsolatedConformances"),
+  // Every existential type is spelled `any P` (SE-0335).
+  .enableUpcomingFeature("ExistentialAny"),
+  // A member is visible only in files that import its module (SE-0444).
+  .enableUpcomingFeature("MemberImportVisibility"),
+  // Every unsafe construct is marked `unsafe` (SE-0458).
+  .strictMemorySafety(),
+]
+
+// Targets that hold views, view models or other user-interface code (BASE-4).
+let interfaceSettings: [SwiftSetting] =
+  baseSettings + [
+    .defaultIsolation(MainActor.self)
+  ]
 
 let package = Package(
   name: "board-app",
@@ -11,16 +33,23 @@ let package = Package(
     .library(name: "Launcher", targets: ["Launcher"]),
   ],
   targets: [
-    .target(name: "SSHSig"),
-    .target(name: "Pairing", dependencies: ["SSHSig"]),
-    .target(name: "Requests", dependencies: ["SSHSig"]),
-    .target(name: "Launcher"),
-    .executableTarget(name: "attention-sign", dependencies: ["SSHSig"]),
-    .testTarget(name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "PairingTests", dependencies: ["Pairing", "SSHSig"]),
+    .target(name: "SSHSig", swiftSettings: baseSettings),
+    .target(name: "Pairing", dependencies: ["SSHSig"], swiftSettings: baseSettings),
+    .target(name: "Requests", dependencies: ["SSHSig"], swiftSettings: baseSettings),
+    .target(name: "Launcher", swiftSettings: baseSettings),
+    .executableTarget(
+      name: "attention-sign", dependencies: ["SSHSig"], swiftSettings: interfaceSettings),
     .testTarget(
-      name: "RequestsTests", dependencies: ["Requests", "SSHSig"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "LauncherTests", dependencies: ["Launcher"], resources: [.copy("Fixtures")]),
-    .testTarget(name: "GatesTests"),
+      name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")],
+      swiftSettings: baseSettings),
+    .testTarget(
+      name: "PairingTests", dependencies: ["Pairing", "SSHSig"], swiftSettings: baseSettings),
+    .testTarget(
+      name: "RequestsTests", dependencies: ["Requests", "SSHSig"], resources: [.copy("Fixtures")],
+      swiftSettings: baseSettings),
+    .testTarget(
+      name: "LauncherTests", dependencies: ["Launcher"], resources: [.copy("Fixtures")],
+      swiftSettings: baseSettings),
+    .testTarget(name: "GatesTests", swiftSettings: baseSettings),
   ]
 )

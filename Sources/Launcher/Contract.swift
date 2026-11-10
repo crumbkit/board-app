@@ -28,7 +28,7 @@ public struct Address: Sendable, Hashable {
 extension Address: Decodable {
   private enum Keys: String, CodingKey { case href, reach }
 
-  public init(from decoder: Decoder) throws {
+  public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     href = try c.decode(URL.self, forKey: .href)
     reach = try c.decode(Reach.self, forKey: .reach)
@@ -74,7 +74,7 @@ public struct Confirm: Sendable, Hashable, Decodable {
 
   private enum Keys: String, CodingKey { case preview }
 
-  public init(from decoder: Decoder) throws {
+  public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     preview = try c.decode([String].self, forKey: .preview)
     try checkArgv(preview, Keys.preview, in: c)
@@ -88,7 +88,7 @@ public struct Run: Sendable, Hashable, Decodable {
 
   private enum Keys: String, CodingKey { case argv, confirm }
 
-  public init(from decoder: Decoder) throws {
+  public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     argv = try c.decode([String].self, forKey: .argv)
     confirm = try c.decodeIfPresent(Confirm.self, forKey: .confirm)
@@ -112,7 +112,7 @@ public struct Action: Sendable, Hashable, Identifiable {
 extension Action: Decodable {
   private enum Keys: String, CodingKey { case id, label, open, copy, run }
 
-  public init(from decoder: Decoder) throws {
+  public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     id = try c.decode(String.self, forKey: .id)
     label = try c.decode(String.self, forKey: .label)
@@ -296,7 +296,7 @@ private struct RawListing: Decodable {
 
   private enum Keys: String, CodingKey { case kind, sections }
 
-  init(from decoder: Decoder) throws {
+  init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     let kind = try? c.decodeIfPresent(String.self, forKey: .kind)
     guard kind == itemsKind else { throw ContractError.unknownKind(kind) }
@@ -320,7 +320,7 @@ private struct RawItem: Decodable {
     case id, type, title, subtitle, keywords, status, actions, children, data
   }
 
-  init(from decoder: Decoder) throws {
+  init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: Keys.self)
     let id = try c.decode(String.self, forKey: .id)
     type = try c.decode(String.self, forKey: .type)

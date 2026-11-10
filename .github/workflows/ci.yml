@@ -1,6 +1,8 @@
 # Runs bin/lint and bin/test, and builds both apps with bin/build-apps, on
 # every pull request and on main. They need macOS, because the helper uses
-# CryptoKit and LocalAuthentication, and the apps need Xcode 27.
+# CryptoKit and LocalAuthentication. Both jobs run on the image that has the
+# Xcode .xcode-version names, because the package needs tools version 6.2 and
+# the apps need Xcode 27.
 name: ci
 
 on:
@@ -17,12 +19,14 @@ concurrency:
 
 jobs:
   gates:
-    runs-on: macos-15
+    # The preview image with the Xcode that .xcode-version names.
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+      - run: sudo xcode-select --switch "/Applications/Xcode_$(cat .xcode-version).app"
       - run: bin/lint
       - run: bin/test
 
@@ -34,6 +38,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+      - run: sudo xcode-select --switch "/Applications/Xcode_$(cat .xcode-version).app"
       - run: xcodebuild -version
       - run: brew install xcodegen && xcodegen --version
       - run: bin/build-apps

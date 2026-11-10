@@ -38,6 +38,7 @@ attention-sign	Sources/attention-sign/*
 attention-sign	bin/setup
 attention-sign	Tests/*
 attention-sign	Package.swift
+attention-sign	swift-standards.toml
 attention-sign	bin/bundle
 attention-sign	Install/install
 attention-sign	Install/test

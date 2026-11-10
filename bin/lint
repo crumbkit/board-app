@@ -4,4 +4,4 @@ set -eu
 cd "$(dirname "$0")/.."
 bin/check-signing
 swift format lint --strict -r Sources Tests Apps Package.swift
-swift build -Xswiftc -warnings-as-errors
+swift build --build-tests -Xswiftc -warnings-as-errors

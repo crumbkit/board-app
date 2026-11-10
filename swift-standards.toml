@@ -1,0 +1,254 @@
+# How board-app adopts swift-standards: adoption.md in that repository
+# defines every table here.
+
+schema = "swift-standards/adoption/v1"
+standards = { version = "draft", commit = "91e588fa72e913a9f40848f0605618dfa6d4d76a" }
+
+profiles = ["base"]
+
+[[binding]]
+rule = "BASE-6"
+owners = [
+  "signing-owners.txt",
+  "Sources/SSHSig/",
+  "Sources/attention-sign/main.swift",
+  "Apps/iOS/PhoneKey.swift",
+  "Sources/Launcher/Runner.swift",
+  "Apps/Shared/BoardCloud.swift",
+]
+checks = ["bin/check-signing, with its list in signing-owners.txt"]
+note = "bin/check-signing enforces the signing owners: SSHSig holds the namespaces, statements and signature bytes, attention-sign holds the Mac's key and PhoneKey holds the phone's. Runner launches every other program and BoardCloud opens the CloudKit database. No check covers the effects other than signing, which the BASE-6 exception records."
+
+[[binding]]
+rule = "BASE-28"
+owners = ["Sources/attention-sign/main.swift", "Apps/iOS/PhoneKey.swift"]
+checks = ["bin/check-signing", "review"]
+note = "The only secrets are the two private keys, and each is created in the Secure Enclave. The file each of these two owners writes holds the enclave's wrapped key, which is useless on any other chip, so no secret value reaches a plain file."
+
+[[decision]]
+id = "lanes"
+requirement = """
+- Lane: `gates` in .github/workflows/ci.yml, on each pull request and each push to main, on the xcode-27 image with the Xcode that .xcode-version names. It runs bin/lint, which is the signing check, swift-format and a build with warnings as errors, and bin/test. Its budget is twenty minutes, the job's timeout. The tests that drive OpenSSH run here and under bin/test locally, because macOS installs that tool (BASE-33).
+- Lane: `apps` in .github/workflows/ci.yml, on each pull request and each push to main, on the same image. It runs bin/build-apps, which builds the Mac and iOS apps unsigned. Its budget is thirty minutes, the job's timeout.
+- A merge waits for both lanes by the landing practice, because GitHub offers neither branch protection nor rulesets on this private repository's plan and so requires no check.
+"""
+reason = "Both lanes fit their timeouts on every pull request. The apps lane has its own job so that a failure in the package gates reads separately from a failure in an app."
+realizations = [".github/workflows/ci.yml", "bin/lint", "bin/test", "bin/build-apps", ".xcode-version"]
+
+[[decision]]
+id = "isolation"
+requirement = "attention-sign holds an AppKit window and defaults to the main actor. SSHSig, Pairing, Requests, Launcher and every test target stay nonisolated. The two app targets keep Xcode's default isolation, which the BASE-4 exception records."
+reason = "SSHSig, Pairing, Requests and Launcher hold logic, parsing and storage that the apps call from several actors. attention-sign is one process whose work runs in its window."
+realizations = ["Package.swift", "project.yml"]
+
+[[decision]]
+id = "unsafe"
+requirement = """
+- SSHSig (Sources/SSHSig/JSON.swift, Effect.swift, SSHSig.swift): each String(format:) has a literal format with one integer conversion that matches its one integer argument, and the pointer withUnsafeBytes passes never leaves its closure.
+- Pairing (Sources/Pairing/Pairing.swift): String(format:) has a literal format with one %u for its one UInt32 argument, and open and rename receive Swift strings that the call bridges for its own duration.
+- Launcher (Sources/Launcher/Config.swift, EvidenceFiles.swift, Runner.swift): no pointer outlives the function that made it. Config and EvidenceFiles pass pointers that are valid for the one POSIX call, and strerror's text is copied at once. Runner's spawn keeps its spawn attributes, file actions and duplicated arguments until its deferred cleanup, after posix_spawn returns. It passes the process's environ to posix_spawn, which only reads it during the call, and nothing in the program changes the environment.
+- attention-sign (Sources/attention-sign/main.swift): the Unmanaged error that the key's access-control call fills in is only described in the failure message.
+- SSHSigTests (Tests/SSHSigTests/ManifestTests.swift): String(format:) has a literal format with one integer conversion for its one byte.
+"""
+reason = "These modules call the C library and Foundation's format API, which strict memory safety marks unsafe. Each use sits on the single expression that needs it, and no pointer outlives the function that made it."
+realizations = [
+  "Sources/SSHSig/JSON.swift",
+  "Sources/SSHSig/Effect.swift",
+  "Sources/SSHSig/SSHSig.swift",
+  "Sources/Pairing/Pairing.swift",
+  "Sources/Launcher/Config.swift",
+  "Sources/Launcher/EvidenceFiles.swift",
+  "Sources/Launcher/Runner.swift",
+  "Sources/attention-sign/main.swift",
+  "Tests/SSHSigTests/ManifestTests.swift",
+]
+
+[[exception]]
+rule = "BASE-1"
+paths = ["Apps/", "project.yml", "bin/build-apps"]
+items = ["setting:app.xcconfig", "setting:SWIFT_TREAT_WARNINGS_AS_ERRORS"]
+owner = "Luke Randall"
+reason = "The Xcode app targets do not use baseline/app.xcconfig, because it would turn on main-actor isolation across both apps, and bin/build-apps does not turn warnings into errors."
+correction = "Name baseline/app.xcconfig in project.yml, fix what both apps then report, and pass SWIFT_TREAT_WARNINGS_AS_ERRORS=YES in bin/build-apps."
+
+[[exception]]
+rule = "BASE-3"
+paths = ["Apps/", "project.yml"]
+items = ["setting:SWIFT_STRICT_MEMORY_SAFETY"]
+owner = "Luke Randall"
+reason = "The Xcode app targets take strict memory safety only from baseline/app.xcconfig, which they do not use."
+correction = "The change that removes the BASE-1 exception also removes this one, and marks each unsafe use in Apps/."
+
+[[exception]]
+rule = "BASE-4"
+paths = ["Apps/", "project.yml"]
+items = ["setting:SWIFT_DEFAULT_ACTOR_ISOLATION"]
+owner = "Luke Randall"
+reason = "The app targets hold views and do not default to the main actor, because baseline/app.xcconfig would turn that on across both apps at once."
+correction = "The change that removes the BASE-1 exception also removes this one, and states each app type that must leave the main actor."
+
+[[exception]]
+rule = "BASE-5"
+paths = [".claude/skills/app-icon/tools/icon_sheet.swift"]
+owner = "Luke Randall"
+reason = "bin/lint covers Sources, Tests, Apps and Package.swift, and this drawing script for the app icon sits outside them and does not pass the baseline."
+correction = "Format the script, remove its force unwraps and force tries, and make bin/lint run swift format on the repository root."
+
+[[exception]]
+rule = "BASE-6"
+paths = [
+  "Apps/",
+  "Sources/Launcher/Config.swift",
+  "Sources/Launcher/EvidenceFiles.swift",
+  "Sources/Launcher/Sidebar.swift",
+  "Sources/Pairing/Pairing.swift",
+  "Sources/Requests/Request.swift",
+  "Sources/attention-sign/main.swift",
+]
+items = ["check:owners"]
+owner = "Luke Randall"
+reason = "bin/check-signing lists owners for signing only. The clock, the calendar, the file system, UserDefaults and CloudKit are used from several files with no owner list, and there is no bin/check-owners."
+correction = "Add bin/check-owners with a list for each effect, and move each use into its owner."
+
+[[exception]]
+rule = "BASE-9"
+paths = ["Tests/GatesTests/", "Install/install", "Install/test"]
+owner = "Luke Randall"
+reason = "GatesTests tests the scripts in bin/, so it has no matching module under Sources. Install/install ships inside the Mac app's bundle, and Install/test checks it from beside it, so neither is a bin/ step."
+correction = "Record a project rule for tests of scripts and for files that ship in the bundle in the standards, or move these into the standard layout."
+
+[[exception]]
+rule = "BASE-12"
+paths = [".github/workflows/ci.yml"]
+items = ["dependabot", "tool:xcodegen"]
+owner = "Luke Randall"
+reason = "The repository has no .github/dependabot.yml, and the apps job installs XcodeGen from Homebrew with no stated version."
+correction = "Copy templates/dependabot.yml from swift-standards to .github/dependabot.yml, and install a stated XcodeGen release in the apps job as templates/ci.yml does."
+
+[[exception]]
+rule = "BASE-13"
+paths = [".github/workflows/ci.yml", "bin/lint", "bin/test"]
+items = ["step:workflows", "step:owners", "flag:force-resolved-versions"]
+owner = "Luke Randall"
+reason = "The lane does not run zizmor on the workflow, its owner step is the signing check alone, and it uses bin/lint and bin/test without the README's step names or --force-resolved-versions. The package has no dependencies, so the flag has nothing to pin."
+correction = "Add a pinned zizmor step, name the lane's steps as the README's table does, and add bin/check-owners when the BASE-6 exception goes."
+
+[[exception]]
+rule = "BASE-14"
+paths = [
+  "Apps/iOS/BoardApp.swift",
+  "Apps/iOS/PairingView.swift",
+  "Apps/iOS/PhoneKey.swift",
+  "Apps/iOS/PreviewRequests.swift",
+  "Apps/macOS/PhoneNotes.swift",
+  "Sources/Launcher/Sidebar.swift",
+  "Sources/attention-sign/main.swift",
+]
+owner = "Luke Randall"
+reason = "Each UserDefaults key and launch argument is a literal at its use site, and no catalog lists them (audit finding BA-14)."
+correction = "Add one typed settings owner per target, a catalog of every key and argument, and a test that the two match."
+
+[[exception]]
+rule = "BASE-15"
+paths = ["bin/testflight", "bin/dmg"]
+items = ["dependabot-security-alerts"]
+owner = "Luke Randall"
+reason = "Dependabot security alerts are off for the repository, and neither release script queries them. The package has no dependencies to raise an alert."
+correction = "Turn the alerts on and make both scripts refuse to build while one is open."
+
+[[exception]]
+rule = "BASE-22"
+paths = [
+  "Apps/",
+  "Sources/Launcher/Contract.swift",
+  "Sources/Launcher/EvidenceFiles.swift",
+  "Sources/Launcher/Runner.swift",
+  "Sources/Pairing/Pairing.swift",
+  "Sources/Requests/Question.swift",
+  "Sources/Requests/Request.swift",
+  "Tests/GatesTests/CheckSigningTests.swift",
+  "Tests/PairingTests/PairingTests.swift",
+  "Tests/SSHSigTests/SSHSigTests.swift",
+  "Tests/SSHSigTests/VectorTests.swift",
+]
+owner = "Luke Randall"
+reason = "Files under Apps/, and these files in Sources/ and Tests/, discard errors with try? and no comment at the site says why nil is the right result."
+correction = "Add a comment at each try? that says why nil is right, or handle the error where nil is wrong."
+
+[[exception]]
+rule = "BASE-29"
+paths = [
+  "Apps/macOS/RequestRelay.swift",
+  "Apps/iOS/PreviewRequests.swift",
+  "Sources/attention-sign/main.swift",
+]
+owner = "Luke Randall"
+reason = "The relay and the fixture rotation write failures to standard error, where nothing in a GUI app shows them (audit finding BA-12). The signing helper is a command-line tool that uses print for its output and writes its refusals to standard error, which its callers read."
+correction = "Send the relay's and the fixture's messages through os.Logger, and have the signing helper write its output through FileHandle.standardOutput."
+
+[[exception]]
+rule = "BASE-30"
+paths = [
+  "Tests/LauncherTests/ConfigTests.swift",
+  "Tests/LauncherTests/ContractTests.swift",
+  "Tests/LauncherTests/EvidenceBrowserTests.swift",
+  "Tests/LauncherTests/EvidenceFilesTests.swift",
+  "Tests/LauncherTests/LauncherTests.swift",
+  "Tests/LauncherTests/MarkdownTests.swift",
+  "Tests/LauncherTests/RunnerTests.swift",
+  "Tests/LauncherTests/SidebarTests.swift",
+  "Tests/RequestsTests/AnsweredTests.swift",
+  "Tests/RequestsTests/BiometryTests.swift",
+  "Tests/RequestsTests/DiffTests.swift",
+  "Tests/RequestsTests/EntitlementTests.swift",
+  "Tests/RequestsTests/QuestionTests.swift",
+  "Tests/RequestsTests/RequestTests.swift",
+  "Tests/RequestsTests/ThreadTests.swift",
+  "Tests/RequestsTests/ZoneCopyTests.swift",
+  "Tests/SSHSigTests/ApprovalTests.swift",
+  "Tests/SSHSigTests/EffectTests.swift",
+  "Tests/SSHSigTests/ManifestTests.swift",
+  "Tests/SSHSigTests/SSHSigTests.swift",
+  "Tests/SSHSigTests/StatementTests.swift",
+  "Tests/SSHSigTests/VectorTests.swift",
+]
+owner = "Luke Randall"
+reason = "These unit test files use XCTest (audit finding BA-5). A file that this adoption touched only to satisfy the new compiler settings moves with the others."
+correction = "Move each file to Swift Testing in the change that next edits its tests."
+
+[[exception]]
+rule = "BASE-31"
+paths = [
+  "Tests/LauncherTests/ConfigTests.swift",
+  "Tests/LauncherTests/ContractTests.swift",
+  "Tests/LauncherTests/EvidenceBrowserTests.swift",
+  "Tests/LauncherTests/EvidenceFilesTests.swift",
+  "Tests/LauncherTests/LauncherTests.swift",
+  "Tests/LauncherTests/MarkdownTests.swift",
+  "Tests/LauncherTests/RunnerTests.swift",
+  "Tests/LauncherTests/SidebarTests.swift",
+  "Tests/RequestsTests/AnsweredTests.swift",
+  "Tests/RequestsTests/BiometryTests.swift",
+  "Tests/RequestsTests/DiffTests.swift",
+  "Tests/RequestsTests/EntitlementTests.swift",
+  "Tests/RequestsTests/QuestionTests.swift",
+  "Tests/RequestsTests/RequestTests.swift",
+  "Tests/RequestsTests/ThreadTests.swift",
+  "Tests/RequestsTests/ZoneCopyTests.swift",
+  "Tests/SSHSigTests/ApprovalTests.swift",
+  "Tests/SSHSigTests/EffectTests.swift",
+  "Tests/SSHSigTests/ManifestTests.swift",
+  "Tests/SSHSigTests/SSHSigTests.swift",
+  "Tests/SSHSigTests/StatementTests.swift",
+  "Tests/SSHSigTests/VectorTests.swift",
+]
+owner = "Luke Randall"
+reason = "These files name their tests in testCamelCase, as XCTest requires (audit finding BA-5)."
+correction = "Rename each test to a snake_case sentence when its file moves to Swift Testing."
+
+[[exception]]
+rule = "BASE-32"
+paths = ["Tests/LauncherTests/RunnerTests.swift"]
+owner = "Luke Randall"
+reason = "Two tests compare the elapsed time of a run with an upper bound (audit finding BA-5)."
+correction = "Check the runner's reported outcome in place of the elapsed time."

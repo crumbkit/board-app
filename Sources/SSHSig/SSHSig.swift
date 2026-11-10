@@ -131,7 +131,7 @@ private func readString(_ bytes: inout Data) -> Data? {
 }
 
 private func uint32(_ value: UInt32) -> Data {
-  withUnsafeBytes(of: value.bigEndian) { Data($0) }
+  withUnsafeBytes(of: value.bigEndian) { unsafe Data($0) }
 }
 
 private func string(_ bytes: Data) -> Data {
