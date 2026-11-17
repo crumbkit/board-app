@@ -8,13 +8,14 @@
 # printed. Any other notarytool error, and a profile named in NOTARY_PROFILE
 # that does not work, stops it with an error.
 #
-#   bin/dmg [board-ref] [attention-ref]   the refs go to bin/bundle
+#   bin/dmg [board-ref]   the ref goes to bin/bundle
 #
 # It writes .build/dmg/Board-<version>-<release id>.dmg, or
 # Board-<version>-<release id>-unnotarised.dmg when the image is not
 # notarised. The image gets that name only after it checks the signatures,
-# the hardened runtime and that the bundled board runs from the mounted
-# image. Any failed check stops it with an error.
+# the hardened runtime, that the bundled board runs from the mounted image,
+# and that the installer in a copy of the app installs into a scratch home.
+# Any failed check stops it with an error.
 set -eu
 cd "$(dirname "$0")/.."
 team=78HLU526FA
@@ -128,9 +129,11 @@ fi
 
 # Check what a second Mac will get: the image, the app and the release in it.
 mount=$(mktemp -d)
+scratch=$(mktemp -d)
 cleanup() {
   hdiutil detach -quiet "$mount" 2>/dev/null || true
   rmdir "$mount" 2>/dev/null || true
+  rm -rf -- "$scratch"
 }
 # INT and TERM exit, which runs the EXIT trap once.
 trap cleanup EXIT
@@ -143,6 +146,21 @@ if [ "$notarised" = yes ]; then
   spctl -a -t open --context context:primary-signature -v "$unfinished"
   spctl -a -vv "$mounted"
 fi
+# Install from a copy of the app, as a person who dragged it out would, into
+# a scratch home with no boards and a claude that answers every list with
+# nothing. The real claude and the real home are never touched.
+ditto "$mounted" "$scratch/Board.app"
+mkdir -p "$scratch/home/.local/bin" "$scratch/stub"
+printf '#!/bin/sh\ncase "$*" in *--json) echo "[]" ;; esac\n' >"$scratch/stub/claude"
+chmod +x "$scratch/stub/claude"
+HOME="$scratch/home" PATH="$scratch/home/.local/bin:$scratch/stub:/usr/bin:/bin:/usr/sbin:/sbin" \
+  "$scratch/Board.app/Contents/Resources/board/install" --hooks >"$out/install.log" 2>&1 ||
+  { cat "$out/install.log" >&2; fail "the installer in the image did not install into a scratch home"; }
+tail -n 1 "$out/install.log" | grep -q 'is installed\.$' ||
+  { cat "$out/install.log" >&2; fail "the installer in the image did not end with \"is installed\""; }
+ls "$scratch/home/.claude/skills"/*/.board-skill >/dev/null 2>&1 ||
+  fail "the installer in the image wrote no Board skills, so its board ships none"
+echo "The installer in the image installs into a scratch home, skills included."
 
 if [ "$notarised" = yes ]; then
   dmg="$out/Board-$version-$id.dmg"

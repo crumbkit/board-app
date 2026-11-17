@@ -3,7 +3,7 @@
 import Foundation
 
 /// How a command ended.
-enum RunOutcome: Sendable, Hashable {
+public enum RunOutcome: Sendable, Hashable {
   /// The command exited by itself.
   case exited(status: Int32)
   /// The command ran past the timeout and was killed.
@@ -14,9 +14,26 @@ enum RunOutcome: Sendable, Hashable {
   case notStarted(String)
 }
 
+/// The stream a command printed a line on.
+public enum RunStream: Sendable, Hashable {
+  case stdout
+  case stderr
+}
+
+/// One line a command printed, without its newline.
+public struct RunLine: Sendable, Hashable {
+  public let stream: RunStream
+  public let text: String
+
+  public init(stream: RunStream, text: String) {
+    self.stream = stream
+    self.text = text
+  }
+}
+
 public struct RunResult: Sendable, Hashable {
   let argv: [String]
-  let outcome: RunOutcome
+  public let outcome: RunOutcome
   /// Standard output, cut at the cap.
   let stdout: Data
   /// Standard error, cut at the cap.
@@ -61,8 +78,14 @@ public struct Runner: Sendable {
   /// as timed out. A cancelled caller's command gets SIGKILL straight after
   /// SIGTERM, with no one-second gap, because the kill timer joins a
   /// cancelled group.
+  ///
+  /// `lines`, when given, gets each line the command prints within the cap
+  /// as it arrives, from the task that reads its stream. A last line with
+  /// no newline arrives when the stream ends.
   @concurrent
-  public func run(_ argv: [String], input: Data? = nil) async -> RunResult {
+  public func run(
+    _ argv: [String], input: Data? = nil, lines: (@Sendable (RunLine) -> Void)? = nil
+  ) async -> RunResult {
     guard let path = argv.first, path.hasPrefix("/") else {
       return RunResult(
         argv: argv, outcome: .notStarted("argv[0] must be an absolute path"), stdout: Data(),
@@ -90,11 +113,13 @@ public struct Runner: Sendable {
         }
       }
       group.addTask {
-        let (data, over) = await collect(out.fileHandleForReading, cap: cap)
+        let (data, over) = await collect(
+          out.fileHandleForReading, cap: cap, stream: .stdout, lines: lines)
         return .output(.stdout, data, over: over)
       }
       group.addTask {
-        let (data, over) = await collect(err.fileHandleForReading, cap: cap)
+        let (data, over) = await collect(
+          err.fileHandleForReading, cap: cap, stream: .stderr, lines: lines)
         return .output(.stderr, data, over: over)
       }
       group.addTask {
@@ -166,13 +191,8 @@ public struct Runner: Sendable {
 /// What the tasks waiting on a running command report to the loop that holds
 /// its state.
 private enum Event: Sendable {
-  enum Stream: Sendable {
-    case stdout
-    case stderr
-  }
-
   case exited(RunOutcome)
-  case output(Stream, Data, over: Bool)
+  case output(RunStream, Data, over: Bool)
   case deadline
   case grace
   case kill
@@ -262,13 +282,17 @@ private func exitStatus(of pid: pid_t) async throws -> Int32 {
 }
 
 /// Reads a pipe up to the cap. It returns as soon as a chunk overflows the
-/// room, and returns what it has at end of file or when cancelled.
+/// room, and returns what it has at end of file or when cancelled. Each
+/// line within the cap goes to `lines` as soon as its newline arrives, and
+/// what is left after the last newline goes when reading ends.
 ///
 /// Only the consumer counts bytes, so the stream's buffer can pass the cap
 /// while no cooperative thread is free to run the consumer. Counting bytes in
 /// the readability handler under an `OSAllocatedUnfairLock` and finishing the
 /// stream at the cap would replace this.
-private func collect(_ handle: FileHandle, cap: Int) async -> (Data, over: Bool) {
+private func collect(
+  _ handle: FileHandle, cap: Int, stream: RunStream, lines: (@Sendable (RunLine) -> Void)?
+) async -> (Data, over: Bool) {
   let chunks = AsyncStream<Data> { continuation in
     continuation.onTermination = { _ in handle.readabilityHandler = nil }
     handle.readabilityHandler = { handle in
@@ -281,11 +305,30 @@ private func collect(_ handle: FileHandle, cap: Int) async -> (Data, over: Bool)
     }
   }
   var data = Data()
+  // Where the line that has not ended yet starts in data.
+  var lineStart = 0
+  func send(final: Bool) {
+    guard let lines else { return }
+    while let newline = data[lineStart...].firstIndex(of: 0x0A) {
+      lines(
+        RunLine(stream: stream, text: String(decoding: data[lineStart..<newline], as: UTF8.self)))
+      lineStart = newline + 1
+    }
+    if final, lineStart < data.endIndex {
+      lines(RunLine(stream: stream, text: String(decoding: data[lineStart...], as: UTF8.self)))
+      lineStart = data.endIndex
+    }
+  }
   for await chunk in chunks {
     let room = cap - data.count
     data.append(chunk.prefix(max(room, 0)))
-    if chunk.count > room { return (data, over: true) }
+    if chunk.count > room {
+      send(final: true)
+      return (data, over: true)
+    }
+    send(final: false)
   }
+  send(final: true)
   return (data, over: false)
 }
 

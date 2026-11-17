@@ -17,6 +17,10 @@
   ([questions](sync-questions.md)). Pure logic.
 - `Launcher`: the launcher's contract, screen model, provider runner and
   config check ([launcher](launcher.md)). Pure logic, with no AppKit.
+- `Installer`: the release the Mac app carries and the one installed, the
+  survey of known boards and old pieces the install sheet describes, the
+  login shell's PATH, and the progress read from `install`'s lines
+  ([bundle](bundle-install.md#lines-for-boardapp)). No AppKit.
 - `attention-sign`: the Mac command that shows a statement and signs it
   with Touch ID.
 
@@ -29,7 +33,8 @@
   list. A half-folded iPhone Duo shows the inbox's tabletop layout.
 - `Apps/macOS`: the Mac app. Its window lists what waits, what was
   answered and the paired iPhones, and opens pairing as a sheet
-  ([window](window.md)). From launch until it quits, it relays pending
+  ([window](window.md)). It offers to install the Board release it
+  carries in a sheet on the same window. From launch until it quits, it relays pending
   effects, threads, answers, replies and open questions between the
   personal board and the phone. Its menu bar item and ⌃⌥Space open the
   launcher.

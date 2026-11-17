@@ -83,6 +83,7 @@ struct BoardWindow: View {
   static let id = "board"
   let relay: RequestRelay
   let openLauncher: () -> Void
+  let install: InstallModel
   @State private var model = BoardWindowModel()
   @State private var page: Page? = .waiting
   @State private var pairing = false
@@ -95,6 +96,14 @@ struct BoardWindow: View {
       sidebar
     } detail: {
       detail
+        // The install sheet waits while the pairing sheet is open.
+        .sheet(
+          isPresented: Binding(
+            get: { install.sheetShown && !pairing },
+            set: { if !$0 && !pairing && !install.running { install.notNow() } })
+        ) {
+          InstallSheet(model: install)
+        }
     }
     .frame(minWidth: 760, minHeight: 460)
     .toolbar {

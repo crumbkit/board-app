@@ -1,7 +1,7 @@
 # Building Board.dmg
 
-`bin/dmg [board-ref] [attention-ref]` builds a disk image for installing
-Board.app on another Mac. The refs go to `bin/bundle`.
+`bin/dmg [board-ref]` builds a disk image for installing Board.app, and
+with it `board`, on another Mac. The ref goes to `bin/bundle`.
 
 ## What it does
 
@@ -22,6 +22,11 @@ Board.app on another Mac. The refs go to `bin/bundle`.
 7. Mounts the image and checks it: the app passes `codesign --verify --deep
    --strict` and `bin/board --version` runs. When notarised, `spctl` accepts
    the image and the app.
+8. Copies the app out of the image to a scratch folder and runs its
+   `install --hooks` into a scratch home, with a stub `claude` that lists
+   nothing. The output goes to `.build/dmg/install.log`, and the check fails
+   unless the install exits 0, its last line ends with `is installed.`, and
+   the scratch home holds at least one skill that `board` wrote.
 
 It writes `.build/dmg/Board-<version>-<release id>.dmg`, with
 `-unnotarised` before `.dmg` when the image is not notarised. The image
@@ -47,7 +52,9 @@ gets that name only after every check passes. A failed check is an error.
 
 ## Installing from it
 
-Drag Board.app to `/Applications`, then run its installer as
+Drag Board.app to `/Applications` and open it. The Board window offers to
+install the release it carries ([window](window.md#installing-board)). An
+agent can run the installer instead, as
 [INSTALL.md](../Install/INSTALL.md) says.
 
 ## Not built

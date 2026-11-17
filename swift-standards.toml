@@ -37,8 +37,8 @@ realizations = [".github/workflows/ci.yml", "bin/lint", "bin/test", "bin/build-a
 
 [[decision]]
 id = "isolation"
-requirement = "attention-sign holds an AppKit window and defaults to the main actor. SSHSig, Pairing, Requests, Launcher and every test target stay nonisolated. The two app targets keep Xcode's default isolation, which the BASE-4 exception records."
-reason = "SSHSig, Pairing, Requests and Launcher hold logic, parsing and storage that the apps call from several actors. attention-sign is one process whose work runs in its window."
+requirement = "attention-sign holds an AppKit window and defaults to the main actor. SSHSig, Pairing, Requests, Launcher, Installer and every test target stay nonisolated. The two app targets keep Xcode's default isolation, which the BASE-4 exception records."
+reason = "SSHSig, Pairing, Requests, Launcher and Installer hold logic, parsing and storage that the apps call from several actors. attention-sign is one process whose work runs in its window."
 realizations = ["Package.swift", "project.yml"]
 
 [[decision]]
@@ -101,6 +101,7 @@ paths = [
   "Sources/Launcher/Config.swift",
   "Sources/Launcher/EvidenceFiles.swift",
   "Sources/Launcher/Sidebar.swift",
+  "Sources/Installer/Machine.swift",
   "Sources/Pairing/Pairing.swift",
   "Sources/Requests/Request.swift",
   "Sources/attention-sign/main.swift",

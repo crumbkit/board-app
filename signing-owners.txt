@@ -42,4 +42,6 @@ attention-sign	swift-standards.toml
 attention-sign	bin/bundle
 attention-sign	Install/install
 attention-sign	Install/test
+attention-sign	Sources/Installer/Progress.swift
+attention-sign	Apps/macOS/InstallSheet.swift
 SecKey	Tests/*

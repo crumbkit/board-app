@@ -38,6 +38,37 @@ The search button opens the launcher ([launcher](launcher.md)). Add iPhone
 opens pairing as a sheet ([devices](devices.md)). The sheet's Cancel closes
 it, and it closes once a phone is added.
 
+## Installing Board
+
+When the app launches and `~/.local/share/board/current` does not name the
+release the app carries ([bundle](bundle.md)), the window opens with a
+sheet. It waits while the pairing sheet is open.
+
+- With no release installed, it offers Install Board on this Mac: the
+  binaries, the skills, the Claude Code mods and the plugins, with the
+  personal board named in Board's config.
+- With another release installed, it offers Update Board: both releases'
+  crumbkit/board commits and dates, what the update replaces, updates,
+  enables and removes, and the boards that still name `controls`, with
+  Open Migration Guide, which opens `MIGRATING.md`. A Removes row shows only
+  when `board-controls@board` is installed in Claude Code, or the Python
+  attention plugin is linked or its `attention-approve` mod installed.
+- Install or Update gets the PATH from the person's login shell (`$SHELL
+  -l -c`, five seconds at most), then runs `install --hooks` with it through
+  the one runner. When the shell fails, it runs with `~/.local/bin` before
+  the app's own PATH, and the sheet says so.
+- While it runs, the sheet shows the seven steps and the installer's
+  output as they arrive. Afterwards it shows what each step did, with a
+  warning sign on a step that left something for the person, or why the
+  install stopped, what that left behind, Show in Finder for the path the
+  installer named, Close and Try Again.
+- Not Now closes the sheet until the next launch. Until the release is
+  installed, the menu bar icon has a dot in the accent colour and the menu
+  has Install Board… or Update Board…, which shows the sheet again.
+- Quitting the app while it installs stops the installer and everything it
+  started. `current` moves only at the end, so the sheet shows again on the
+  next launch.
+
 ## Phone names
 
 At pairing the Mac keeps the name the phone gave and the time, in its own

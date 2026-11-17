@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 # Assembles Bundle/board, which Board-macOS ships in its Resources: the board
-# binary, every Board plugin, attention, attention-sign, the Claude Code hooks,
-# the installer and its instructions.
+# binary with every Board plugin built in, attention-sign, Board's Claude Code
+# mods, the installer and its instructions.
 #
-#   bin/bundle [board-ref] [attention-ref]
+#   bin/bundle [board-ref]
 #
-# Each ref defaults to origin/main of the checkout BOARD_SRC or ATTENTION
-# names. When unset, they are the crumbkit/board checkout at ~/Code/crumbverse/board and
-# ~/Code/board-attention. The checkouts' working
-# trees are only read through git, so their branch and changes do not matter.
+# The ref defaults to origin/main of the crumbkit/board checkout BOARD_SRC
+# names, by default ~/Code/crumbverse/board. The checkout's working tree is
+# only read through git, so its branch and changes do not matter.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 board_src=${BOARD_SRC:-$HOME/Code/crumbverse/board}
-attention=${ATTENTION:-$HOME/Code/board-attention}
 
 git -C "$board_src" fetch -q origin
-git -C "$attention" fetch -q origin
 board_commit=$(git -C "$board_src" rev-parse "${1:-origin/main}^{commit}")
-attention_commit=$(git -C "$attention" rev-parse "${2:-origin/main}^{commit}")
+board_date=$(git -C "$board_src" log -1 --format=%cI "$board_commit")
 app_commit=$(git -C "$repo" rev-parse HEAD)
+app_date=$(git -C "$repo" log -1 --format=%cI HEAD)
 if [ -n "$(git -C "$repo" status --porcelain -- Sources Install Package.swift Package.resolved)" ]; then
   echo "bin/bundle: Sources, Install or the package manifest has uncommitted changes, so the bundle would not match $app_commit." >&2
   exit 1
@@ -27,50 +25,66 @@ fi
 
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-mkdir "$work/board-src" "$work/attention"
-git -C "$board_src" archive "$board_commit" | tar -x -C "$work/board-src"
-git -C "$attention" archive "$attention_commit" | tar -x -C "$work/attention"
+# board-cli's build script records the source's path, and cargo reuses a
+# build script's output from the same target directory, so the source is
+# always extracted to the same place. A new path each run would leave the
+# cached script reading a deleted folder, and board would embed no skills.
+src="$repo/.build/board-src"
+rm -rf -- "$src"
+mkdir -p "$src"
+git -C "$board_src" archive "$board_commit" | tar -x -C "$src"
 
 echo "Building board at crumbkit/board ${board_commit:0:12}."
-CARGO_TARGET_DIR="$repo/.build/cargo" cargo build --release --locked --quiet \
-  --manifest-path "$work/board-src/Cargo.toml" -p board-cli
+# The archive has no git, so BOARD_BUILD_COMMIT names the commit that
+# board --version prints. board-cli is cleaned first, because its build
+# script's binary keeps the source path it was compiled with, and one built
+# by an older bin/bundle from a temporary folder would embed no skills.
+CARGO_TARGET_DIR="$repo/.build/cargo" cargo clean --release --quiet \
+  --manifest-path "$src/Cargo.toml" -p board-cli
+BOARD_BUILD_COMMIT="$board_commit" CARGO_TARGET_DIR="$repo/.build/cargo" \
+  cargo build --release --locked --quiet --manifest-path "$src/Cargo.toml" -p board-cli
 echo "Building attention-sign at board-app ${app_commit:0:12}."
 (cd "$repo" && swift build -c release --product attention-sign >/dev/null)
 
 stage="$work/board"
-mkdir -p "$stage/bin" "$stage/plugins" "$stage/.claude-plugin"
+mkdir -p "$stage/bin" "$stage/.claude-plugin"
 cp "$repo/.build/cargo/release/board" "$repo/.build/release/attention-sign" "$stage/bin/"
-for plugin in "$work"/board-src/plugins/*/; do
-  rsync -a --exclude tests/ --exclude .venv/ "$plugin" "$stage/plugins/$(basename "$plugin")/"
-done
-rsync -a --exclude tests/ --exclude .venv/ --exclude /.github/ --exclude /.claude/ \
-  --exclude /.claude-plugin/ "$work/attention/" "$stage/plugins/attention/"
-cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$stage/"
+mkdir "$work/no-skills"
+skills=$("$stage/bin/board" skills list --dir "$work/no-skills" --fields name </dev/null | tail -n +2 | wc -l)
+[ "$skills" -gt 0 ] || {
+  echo "bin/bundle: the board it built ships no skills, so installing it would remove every Board skill." >&2
+  exit 1
+}
+echo "board $("$stage/bin/board" --version | cut -d' ' -f2) ships $((skills)) skills."
+cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$repo/Install/MIGRATING.md" "$stage/"
 
-# One marketplace for every Claude Code plugin in the bundle: Board's entries
-# point under plugins/<name>/, attention's at plugins/attention/claude-code.
-jq --arg attention "./plugins/attention/claude-code" '
-  .plugins += [{name: "attention-approve", source: $attention}]
-  | .description = "Claude Code hooks of Board and its plugins, from Board.app."
-' "$work/board-src/.claude-plugin/marketplace.json" >"$stage/.claude-plugin/marketplace.json"
-# Claude Code caches an installed plugin by its version, so each release
-# gives every hook plugin a version of its own, or an update keeps old hooks.
-release_tag="${board_commit:0:12}.${attention_commit:0:12}"
+# Board's marketplace, and only the mod directories it names. Every plugin
+# is built into board, so nothing else under plugins/ ships.
+jq '.description = "Claude Code mods of Board and its plugins, from Board.app."' \
+  "$src/.claude-plugin/marketplace.json" >"$stage/.claude-plugin/marketplace.json"
+# Claude Code caches an installed plugin by its version, so each Board commit
+# gives every mod a version of its own, or an update keeps the old mod.
+release_tag="${board_commit:0:12}"
 jq -r '.plugins[].source' "$stage/.claude-plugin/marketplace.json" | while read -r source; do
-  manifest="$stage/$source/.claude-plugin/plugin.json"
+  manifest="$src/$source/.claude-plugin/plugin.json"
   [ -f "$manifest" ] || {
     echo "bin/bundle: the marketplace names $source, which has no .claude-plugin/plugin.json." >&2
     exit 1
   }
-  jq --arg tag "$release_tag" '.version = "\(.version)+\($tag)"' "$manifest" >"$manifest.new"
-  mv "$manifest.new" "$manifest"
+  mkdir -p "$stage/$source"
+  rsync -a --exclude tests/ --exclude node_modules/ "$src/$source/" "$stage/$source/"
+  jq --arg tag "$release_tag" '.version = "\(.version)+\($tag)"' "$manifest" \
+    >"$stage/$source/.claude-plugin/plugin.json"
   claude plugin validate "$stage/$source" >/dev/null
 done
 claude plugin validate "$stage" >/dev/null
 
-jq -n --arg board "$board_commit" --arg attention "$attention_commit" --arg app "$app_commit" '{
-  id: "board-\($board[0:12]).attention-\($attention[0:12]).app-\($app[0:12])",
-  board: $board, attention: $attention, "board-app": $app
+# board-date is the Board commit's date, which Board.app shows beside it.
+# Board.app offers an update only when both dates say the release is newer.
+jq -n --arg board "$board_commit" --arg date "$board_date" --arg app "$app_commit" \
+  --arg app_date "$app_date" '{
+  id: "board-\($board[0:12]).app-\($app[0:12])",
+  board: $board, "board-date": $date, "board-app": $app, "board-app-date": $app_date
 }' >"$stage/release.json"
 
 mkdir -p "$repo/Bundle"

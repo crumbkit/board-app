@@ -75,6 +75,8 @@ targets:
         product: Requests
       - package: board-app
         product: Launcher
+      - package: board-app
+        product: Installer
     entitlements:
       path: Apps/macOS/Board.entitlements
       properties:

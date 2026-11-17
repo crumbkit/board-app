@@ -1,5 +1,13 @@
 #!/bin/sh
 # The tests drive OpenSSH to check the signatures the helper writes.
+# Install/test also runs when bin/bundle has written Bundle/board. CI has no
+# bundle, because bin/bundle needs crumbkit/board's source from GitHub,
+# cargo and claude, so CI runs only the Swift tests.
 set -eu
 cd "$(dirname "$0")/.."
 swift test
+if [ -f Bundle/board/release.json ]; then
+  Install/test
+else
+  echo "bin/test: no Bundle/board, so Install/test did not run; run bin/bundle first to include it."
+fi

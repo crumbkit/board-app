@@ -31,12 +31,14 @@ let package = Package(
     .library(name: "Pairing", targets: ["Pairing"]),
     .library(name: "Requests", targets: ["Requests"]),
     .library(name: "Launcher", targets: ["Launcher"]),
+    .library(name: "Installer", targets: ["Installer"]),
   ],
   targets: [
     .target(name: "SSHSig", swiftSettings: baseSettings),
     .target(name: "Pairing", dependencies: ["SSHSig"], swiftSettings: baseSettings),
     .target(name: "Requests", dependencies: ["SSHSig"], swiftSettings: baseSettings),
     .target(name: "Launcher", swiftSettings: baseSettings),
+    .target(name: "Installer", dependencies: ["Launcher"], swiftSettings: baseSettings),
     .executableTarget(
       name: "attention-sign", dependencies: ["SSHSig"], swiftSettings: interfaceSettings),
     .testTarget(
@@ -50,6 +52,8 @@ let package = Package(
     .testTarget(
       name: "LauncherTests", dependencies: ["Launcher"], resources: [.copy("Fixtures")],
       swiftSettings: baseSettings),
+    .testTarget(
+      name: "InstallerTests", dependencies: ["Installer", "Launcher"], swiftSettings: baseSettings),
     .testTarget(name: "GatesTests", swiftSettings: baseSettings),
   ]
 )

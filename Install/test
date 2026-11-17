@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Installs a bundle into a scratch home and checks what install changed.
+# Installs a bundle into scratch homes and checks what install changed.
 #
 #   Install/test [bundle]      bundle defaults to Bundle/board; run bin/bundle first
 #
 # It runs this checkout's Install/install on a copy of the bundle, so an edit
-# to the installer is tested without bundling again.
-# It uses the real uv cache and git config, because attention fetches
-# board-plugin from GitHub. claude is a stub that logs its arguments. This
-# proves the installer's links, binaries, refusals and plugin enabling; it
-# does not prove that the real claude accepts the hook commands.
+# to the installer is tested without bundling again. Each case gets a home of
+# its own, with a scratch git identity and a stub claude that logs its
+# arguments and answers its list commands from files in the home. This proves
+# the installer's steps, links, binaries, refusals and plugin enabling; it
+# does not prove that the real claude accepts the mod commands.
 set -uo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -18,57 +18,184 @@ scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
 bundle="$scratch/bundle"
 cp -R "$source" "$bundle"
-cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$bundle/"
+cp "$repo/Install/install" "$repo/Install/INSTALL.md" "$repo/Install/MIGRATING.md" "$bundle/"
+id=$(plutil -extract id raw -o - "$bundle/release.json")
+mods=$(plutil -extract plugins raw -o - "$bundle/.claude-plugin/marketplace.json")
 failures=0
 check() {
   if eval "$2"; then echo "ok: $1"; else echo "FAILED: $1" >&2; failures=$((failures + 1)); fi
 }
 
-mkdir -p "$scratch/stub" "$scratch/.config/board"
+mkdir -p "$scratch/stub"
+# The stub keeps its installed plugins one id per line in plugins.txt, and
+# its marketplaces one name per line in marketplaces.txt, and answers its
+# list commands from them as JSON. As the real claude does, removing a
+# marketplace uninstalls every plugin installed from it, and adding a
+# marketplace of a name it has re-points it and keeps its plugins.
 cat >"$scratch/stub/claude" <<'EOF'
 #!/bin/sh
 echo "$*" >>"$HOME/claude.log"
-case "$*" in *"list --json"*) echo '[{"name": "attention"}]' ;; esac
+if [ -f "$HOME/claude-refuses" ] && [ "$*" = "$(cat "$HOME/claude-refuses")" ]; then exit 1; fi
+touch "$HOME/plugins.txt" "$HOME/marketplaces.txt"
+json() { sed 's/.*/{"'"$1"'": "&"}/' | paste -sd, - | sed 's/^/[/; s/$/]/'; }
+case "$*" in
+  "plugin marketplace list --json") json name <"$HOME/marketplaces.txt" ;;
+  "plugin list --json") json id <"$HOME/plugins.txt" ;;
+  "plugin marketplace add "*)
+    grep -qx board "$HOME/marketplaces.txt" || echo board >>"$HOME/marketplaces.txt" ;;
+  "plugin marketplace remove "*)
+    grep -vx "$4" "$HOME/marketplaces.txt" >"$HOME/m.new"; mv "$HOME/m.new" "$HOME/marketplaces.txt"
+    grep -v "@$4\$" "$HOME/plugins.txt" >"$HOME/p.new"; mv "$HOME/p.new" "$HOME/plugins.txt" ;;
+  "plugin install "*) grep -qx "$3" "$HOME/plugins.txt" || echo "$3" >>"$HOME/plugins.txt" ;;
+  "plugin uninstall "*)
+    grep -vx "$3" "$HOME/plugins.txt" >"$HOME/p.new"; mv "$HOME/p.new" "$HOME/plugins.txt" ;;
+esac
 EOF
 chmod +x "$scratch/stub/claude"
-export UV_CACHE_DIR="${UV_CACHE_DIR:-$(uv cache dir)}" GIT_CONFIG_GLOBAL="$HOME/.gitconfig"
-export GH_CONFIG_DIR="${GH_CONFIG_DIR:-$HOME/.config/gh}"
-path="$scratch/.local/bin:$scratch/stub:$(dirname "$(command -v uv)")"
-command -v gh >/dev/null && path="$path:$(dirname "$(command -v gh)")"
-export HOME=$scratch PATH="$path:/usr/bin:/bin:/usr/sbin:/sbin"
-share="$HOME/.local/share/board"
-id=$(plutil -extract id raw -o - "$bundle/release.json")
-git init -q "$HOME/personal" && (cd "$HOME/personal" && board_init=$("$bundle/bin/board" init) && git add -A && git commit -qm init)
-printf '{"boards": ["%s"], "personal": "%s"}\n' "$HOME/personal" "$HOME/personal" >"$HOME/.config/board/config.json"
+printf '[user]\n\tname = Install test\n\temail = install-test@example.invalid\n' >"$scratch/gitconfig"
+export GIT_CONFIG_GLOBAL="$scratch/gitconfig" GIT_CONFIG_NOSYSTEM=1
+base_path="/usr/bin:/bin:/usr/sbin:/sbin"
 
-mkdir -p "$share/plugins/evals"
-"$bundle/install" >/dev/null 2>"$scratch/refused"
-check "a real directory where a link goes stops the install" "[ \$? -ne 0 ] && grep -q 'is not a link' '$scratch/refused'"
-check "and is left as it is" "[ -d '$share/plugins/evals' ] && [ ! -L '$share/plugins/evals' ]"
-check "and nothing else was changed" "[ ! -e '$share/current' ] && [ ! -e '$share/plugins/attention' ] && [ ! -e '$HOME/.local/bin/board' ]"
-rmdir "$share/plugins/evals"
+# Makes a home with a personal board that config.json names, and sets HOME,
+# PATH and share for it. The board binary on PATH is the installed one.
+home() {
+  export HOME="$scratch/$1"
+  export PATH="$HOME/.local/bin:$scratch/stub:$base_path"
+  share="$HOME/.local/share/board"
+  mkdir -p "$HOME/.config/board"
+  git init -q "$HOME/personal"
+  (cd "$HOME/personal" && "$bundle/bin/board" init >/dev/null 2>&1 && git add -A && git commit -qm init)
+  printf '{"boards": ["%s"], "personal": "%s"}\n' "$HOME/personal" "$HOME/personal" >"$HOME/.config/board/config.json"
+}
+installed_ok() { [ "$(readlink "$share/current")" = "releases/$id" ]; }
+# plugin list exits 1 when a plugin reports a problem, and still lists all.
+enabled_in() { { "$HOME/.local/bin/board" -C "$1" plugin list --fields name,enabled --all </dev/null 2>/dev/null || true; } | awk 'NR > 1 && $2 == "true" { print $1 }'; }
 
-"$bundle/install" --hooks >"$scratch/out" 2>&1
-check "the same install without it succeeds" "[ \$? -eq 0 ]"
-check "current points at the release" "[ \"\$(readlink '$share/current')\" = 'releases/$id' ]"
-check "each plugin links through current" "[ \"\$(readlink '$share/plugins/evals')\" = '$share/current/plugins/evals' ]"
-check "a plugin with a skill gets a skill link" "[ -L '$HOME/.claude/skills/tasks' ] && [ -f '$HOME/.claude/skills/tasks/SKILL.md' ]"
-check "a plugin without a skill gets none" "[ ! -e '$HOME/.claude/skills/review' ]"
+echo "A fresh home:"
+home fresh
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "the install succeeds" "[ \$? -eq 0 ] && tail -1 '$HOME/out' | grep -q 'is installed'"
+check "current points at the release" "installed_ok"
 check "board and attention-sign are installed" "cmp -s '$bundle/bin/board' '$HOME/.local/bin/board' && cmp -s '$bundle/bin/attention-sign' '$HOME/.local/bin/attention-sign'"
-check "every plugin is enabled in the personal board" "[ \$(board -C '$HOME/personal' plugin list --json </dev/null | grep -o '\"enabled\": *true' | wc -l) -eq \$(ls '$share/plugins' | wc -l) ]"
-check "an installed plugin answers a call" "board -C '$HOME/personal' call evals.open </dev/null >/dev/null"
-check "the hooks replace the attention marketplace" "grep -qx 'plugin marketplace remove attention' '$HOME/claude.log' && grep -qx 'plugin install attention-approve@board' '$HOME/claude.log'"
+check "board writes its skills" "[ -f '$HOME/.claude/skills/tasks/.board-skill' ] && [ -f '$HOME/.claude/skills/attention/SKILL.md' ] && [ ! -L '$HOME/.claude/skills/tasks' ]"
+check "no plugin links are made" "[ ! -e '$share/plugins' ] || [ -z \"\$(ls -A '$share/plugins')\" ]"
+check "every plugin is enabled in the personal board" "[ \$(enabled_in '$HOME/personal' | wc -l) -eq \$(\$HOME/.local/bin/board -C '$HOME/personal' plugin list --fields name --all </dev/null | tail -n +2 | wc -l) ] && enabled_in '$HOME/personal' | grep -x attention >/dev/null"
+check "attention answers a call" "board -C '$HOME/personal' call attention.pinned </dev/null >/dev/null"
+check "every mod in the marketplace is installed from the copied release" "grep -qx 'plugin marketplace add $share/releases/$id' '$HOME/claude.log' && [ \$(grep -c '^plugin install .*@board\$' '$HOME/claude.log') -eq $mods ] && grep -qx 'plugin install board-attention@board' '$HOME/claude.log'"
+check "nothing is uninstalled that was not installed" "! grep -q 'uninstall\\|marketplace remove' '$HOME/claude.log'"
+check "the steps start in order, each followed by its result" "[ \"\$(grep -o '^::step [0-9]' '$HOME/out' | tr -d '\n')\" = '::step 1::step 2::step 3::step 4::step 5::step 6::step 7' ] && [ \$(grep -c '^::done [1-7] ' '$HOME/out') -eq 7 ]"
+check "a step's line names its label and its result counts what it did" "grep -qx '::step 3 Install board and attention-sign' '$HOME/out' && grep -qx '::done 6 Installed $mods Claude Code mods' '$HOME/out' && grep -qx '::done 5 Enabled plugins in 1 board' '$HOME/out' && grep -qx \"::done 4 Installed \$(ls '$HOME/.claude/skills' | wc -l | tr -d ' ') skills\" '$HOME/out'"
+check "a fresh home prints no warning and nothing on standard error" "! grep -q '^::warn' '$HOME/out' && [ ! -s '$HOME/err' ]"
 
 commits=$(git -C "$HOME/personal" rev-list --count HEAD)
-"$bundle/install" >"$scratch/again" 2>&1
-check "a second install succeeds" "[ \$? -eq 0 ] && grep -q 'already copied' '$scratch/again'"
+"$bundle/install" --hooks >"$HOME/again" 2>&1
+check "a second install succeeds" "[ \$? -eq 0 ] && grep -q 'already copied' '$HOME/again'"
+check "and counts only the skills it wrote" "grep -qx '::done 4 Installed 0 skills' '$HOME/again'"
 check "and makes no commit and keeps no .prev" "[ \$(git -C '$HOME/personal' rev-list --count HEAD) -eq $commits ] && [ ! -e '$share/board.prev' ]"
 
-ln -s "$share/current/plugins/gone" "$share/plugins/gone"
-"$bundle/install" >/dev/null 2>&1
-check "a link to a plugin the release no longer ships is removed" "[ ! -L '$share/plugins/gone' ]"
+echo "A release whose board ships no skills:"
+home no-skills
+cp -R "$bundle" "$scratch/no-skills-bundle"
+printf '#!/bin/sh\ncase "$*" in "skills list"*) echo "STATE  NAME  PATH" ;; esac\n' >"$scratch/no-skills-bundle/bin/board"
+"$scratch/no-skills-bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "it stops at step 1 and says the binary ships no skills" "[ \$? -ne 0 ] && grep -q 'ships no skills' '$HOME/err' && ! grep -q '^::step 2' '$HOME/out'"
+check "and nothing was changed" "[ ! -e '$share' ] && [ ! -e '$HOME/.local/bin/board' ] && [ ! -e '$HOME/claude.log' ]"
 
-PATH=${PATH#"$HOME/.local/bin:"} "$bundle/install" >/dev/null 2>"$scratch/nopath"
-check "an install with ~/.local/bin off PATH stops and says why" "[ \$? -ne 0 ] && grep -q 'is not on PATH' '$scratch/nopath'"
+echo "A home with the Python attention plugin and an older release:"
+home python
+mkdir -p "$HOME/Code/board-attention" "$share/releases/old/plugins/evals" "$share/releases/old/plugins/tasks" "$share/plugins" "$HOME/.claude/skills" "$HOME/.local/bin"
+printf '[project]\nname = "board-attention"\n' >"$HOME/Code/board-attention/pyproject.toml"
+printf 'old skill\n' >"$share/releases/old/plugins/tasks/SKILL.md"
+ln -s releases/old "$share/current"
+ln -s "$HOME/Code/board-attention" "$share/plugins/attention"
+ln -s "$HOME/Code/board-attention" "$HOME/.claude/skills/attention"
+ln -s "$share/current/plugins/evals" "$share/plugins/evals"
+ln -s "$share/current/plugins/tasks" "$HOME/.claude/skills/tasks"
+mkdir -p "$share/plugins/mine" && ln -s "$share/plugins/mine" "$share/plugins/other"
+printf 'old board\n' >"$HOME/.local/bin/board" && chmod +x "$HOME/.local/bin/board"
+printf 'attention\nboard\n' >"$HOME/marketplaces.txt"
+printf 'board-controls@board\nattention-approve@attention\nboard-rules@board\n' >"$HOME/plugins.txt"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "the install succeeds" "[ \$? -eq 0 ] && installed_ok"
+check "the attention links into the board-attention checkout are removed" "[ ! -L '$share/plugins/attention' ] && [ -f '$HOME/.claude/skills/attention/.board-skill' ]"
+check "the links into the older release are removed, and board writes the skill" "[ ! -e '$share/plugins/evals' ] && [ ! -L '$HOME/.claude/skills/tasks' ] && [ -f '$HOME/.claude/skills/tasks/.board-skill' ]"
+check "a link the installer did not make is left alone" "[ -L '$share/plugins/other' ] && [ -d '$share/plugins/mine' ]"
+check "and a plugin from elsewhere is not enabled" "! enabled_in '$HOME/personal' | grep -qx 'mine\|other'"
+check "the checkout itself is left alone" "[ -f '$HOME/Code/board-attention/pyproject.toml' ]"
+check "the old board is kept as board.prev" "grep -qx 'old board' '$share/board.prev'"
+check "board does not refuse attention as a duplicate" "board -C '$HOME/personal' plugin enable attention </dev/null >/dev/null 2>&1"
+check "board-controls and attention-approve are uninstalled after the new mods install" "[ \$(grep -n 'plugin uninstall board-controls@board' '$HOME/claude.log' | cut -d: -f1) -gt \$(grep -n 'plugin install board-rules@board' '$HOME/claude.log' | cut -d: -f1) ] && grep -qx 'plugin uninstall attention-approve@attention' '$HOME/claude.log'"
+check "a board marketplace added before is re-pointed at the release, never removed" "! grep -q 'plugin marketplace remove board' '$HOME/claude.log' && grep -qx 'plugin marketplace add $share/releases/$id' '$HOME/claude.log'"
+check "so the mods installed before stay installed, and the old ones are gone" "grep -qx 'board-rules@board' '$HOME/plugins.txt' && ! grep -q 'board-controls\|attention-approve' '$HOME/plugins.txt'"
+check "the attention marketplace is removed" "grep -qx 'plugin marketplace remove attention' '$HOME/claude.log'"
+check "step 7 says what it removed" "grep -qx '::done 7 Removed board-controls and attention-approve' '$HOME/out'"
+
+echo "A home where board-controls is installed and will not uninstall:"
+home controls-mod
+printf 'board\n' >"$HOME/marketplaces.txt"
+printf 'board-controls@board\n' >"$HOME/plugins.txt"
+printf 'plugin uninstall board-controls@board' >"$HOME/claude-refuses"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "the install still succeeds" "[ \$? -eq 0 ] && installed_ok"
+check "step 7 warns and names the mod to remove" "grep -qx '::warn 7 Did not remove board-controls@board; remove each with claude plugin uninstall' '$HOME/out'"
+check "attention-approve is not touched when it is not installed" "! grep -q attention-approve '$HOME/claude.log'"
+
+echo "A board that still names controls:"
+home controls-board
+git init -q "$HOME/team"
+(cd "$HOME/team" && "$bundle/bin/board" init >/dev/null 2>&1 && git add -A && git commit -qm init)
+printf '{"$type": "board/config/v1", "plugins": ["controls", "evals"]}\n' >"$HOME/team/.board/board.json"
+git -C "$HOME/team" commit -qam "Name controls and evals"
+printf '{"boards": ["%s", "%s"], "personal": "%s"}\n' "$HOME/personal" "$HOME/team" "$HOME/personal" >"$HOME/.config/board/config.json"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "the install succeeds" "[ \$? -eq 0 ] && installed_ok"
+check "the board is named on a ::controls line, and only it" "[ \"\$(grep '^::controls ' '$HOME/out')\" = '::controls $HOME/team' ]"
+check "the board's config is left naming controls" "grep -q '\"controls\"' '$HOME/team/.board/board.json'"
+check "and no plugin is enabled in it" "[ \$(git -C '$HOME/team' rev-list --count HEAD) -eq 2 ]"
+check "the personal board's plugins are enabled, and only it is counted" "enabled_in '$HOME/personal' | grep -qx evals && grep -qx '::done 5 Enabled plugins in 1 board' '$HOME/out'"
+
+echo "Board's config in other shapes:"
+home no-boards
+printf '{"day_start": "07:00"}\n' >"$HOME/.config/board/config.json"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "a config that names no board installs and warns at step 5" "[ \$? -eq 0 ] && installed_ok && grep -q '^::warn 5 Enabled no plugins' '$HOME/out'"
+home relative
+printf '{"personal": "../../personal"}\n' >"$HOME/.config/board/config.json"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "a relative personal board is read against the config's folder" "[ \$? -eq 0 ] && enabled_in '$HOME/personal' | grep -qx evals && grep -qx '::done 5 Enabled plugins in 1 board' '$HOME/out'"
+home ghost
+printf '{"$type": "board/config/v1", "plugins": ["evals", "ghost"]}\n' >"$HOME/personal/.board/board.json"
+git -C "$HOME/personal" commit -qam "Name a plugin no board installs"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "a plugin the board names but board does not have is skipped, and the rest are enabled" "[ \$? -eq 0 ] && installed_ok && enabled_in '$HOME/personal' | grep -x attention >/dev/null"
+
+echo "Refusals:"
+home refusals
+mkdir -p "$share/plugins/attention"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "a folder where the attention link goes stops the install at step 1" "[ \$? -ne 0 ] && grep -q 'is a folder, not a link' '$HOME/err' && grep -qx '::path $share/plugins/attention' '$HOME/out' && [ \"\$(grep '^::' '$HOME/out' | tail -1)\" = \"::refusal $share/plugins/attention is a folder, not a link the installer made. Move it aside, then try again.\" ] && ! grep -q '^::step 2' '$HOME/out'"
+check "and nothing else was changed" "[ ! -e '$share/current' ] && [ ! -e '$share/releases' ] && [ ! -e '$HOME/.local/bin/board' ] && [ ! -e '$HOME/claude.log' ]"
+rmdir "$share/plugins/attention"
+ln -s "$HOME/elsewhere" "$share/plugins/attention"
+"$bundle/install" >/dev/null 2>"$HOME/err"
+check "a link to something else stops it and names the target" "[ \$? -ne 0 ] && grep -q 'is a link to $HOME/elsewhere' '$HOME/err'"
+rm "$share/plugins/attention"
+PATH=${PATH#"$HOME/.local/bin:"} "$bundle/install" >"$HOME/out" 2>"$HOME/err"
+check "an install with ~/.local/bin off PATH stops and says why" "[ \$? -ne 0 ] && grep -q 'is not on PATH' '$HOME/err' && grep -qx '::path $HOME/.local/bin' '$HOME/out' && grep -q '^::refusal .* is not on PATH' '$HOME/out'"
+mkdir -p "$HOME/early"
+printf '#!/bin/sh\n' >"$HOME/early/board" && chmod +x "$HOME/early/board"
+PATH="$HOME/early:$PATH" "$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "another board earlier on PATH stops it at step 1" "[ \$? -ne 0 ] && grep -q 'comes before' '$HOME/err' && grep -qx '::path $HOME/early/board' '$HOME/out' && ! grep -q '^::step 2' '$HOME/out'"
+check "and nothing was changed" "[ ! -e '$share/current' ] && [ ! -e '$HOME/.local/bin/board' ]"
+mkdir -p "$HOME/.claude/skills/tasks"
+"$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "a folder at a skill's name that is not Board's stops it at step 1" "[ \$? -ne 0 ] && grep -q 'not a skill board wrote' '$HOME/err' && grep -qx '::path $HOME/.claude/skills/tasks' '$HOME/out' && ! grep -q '^::step 2' '$HOME/out'"
+rmdir "$HOME/.claude/skills/tasks"
+rm -f "$HOME/claude.log"
+PATH="$HOME/.local/bin:$base_path" "$bundle/install" --hooks >"$HOME/out" 2>"$HOME/err"
+check "without claude on PATH the install succeeds and warns at step 6" "[ \$? -eq 0 ] && installed_ok && grep -qx '::warn 6 Installed no Claude Code mods, because claude is not on PATH' '$HOME/out' && ! grep -q '^::step 7' '$HOME/out'"
+rm "$HOME/.config/board/config.json"
+"$bundle/install" >"$HOME/out" 2>"$HOME/err"
+check "without Board's config it warns at step 5 and stops after it without --hooks" "[ \$? -eq 0 ] && grep -q '^::warn 5 Enabled no plugins' '$HOME/out' && ! grep -q '^::step 6' '$HOME/out'"
 
 [ $failures -eq 0 ] && echo "All checks passed." || { echo "$failures checks failed." >&2; exit 1; }
