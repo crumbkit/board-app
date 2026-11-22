@@ -65,4 +65,5 @@ agent can run the installer instead, as
   and also the `board` and `attention-sign` the installer copies into
   `~/.local/bin`, until the owner allows each in System Settings > Privacy &
   Security.
-- Nothing publishes the image or checks for a newer one.
+- Nothing checks for a newer image. A version tag publishes one, as
+  [releasing](release.md) says.
