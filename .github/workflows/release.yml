@@ -166,6 +166,8 @@ jobs:
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          # security import takes the .p12 password only through -P, so it is in this
+          # process's argument list on a single-use runner. No step prints it.
           security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" \
             -T /usr/bin/codesign -T /usr/bin/security
           rm -f "$RUNNER_TEMP/developer-id.p12"
