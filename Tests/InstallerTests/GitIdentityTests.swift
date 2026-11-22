@@ -54,8 +54,10 @@ private struct GlobalConfig: ~Copyable {
 
 @Test func an_identity_set_only_through_a_conditional_include_is_reported() async throws {
   let included = try GlobalConfig("[user]\n\tname = Ana Silva\n\temail = ana@example.com\n")
+  // The condition matches every repository, including any the test runs in,
+  // so the identity reads as unset only because git runs from /.
   let config = try GlobalConfig(
-    "[includeIf \"gitdir:~/work/\"]\n\tpath = \(included.url.path)\n")
+    "[includeIf \"gitdir:/\"]\n\tpath = \(included.url.path)\n")
   let identity = await GitIdentity.read(git: config.git)
   #expect(identity == GitIdentity(name: nil, email: nil, conditional: true))
   #expect(!identity.complete)
