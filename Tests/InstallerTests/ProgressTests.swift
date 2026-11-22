@@ -14,11 +14,11 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
 }
 
 @Test func each_line_the_installer_prints_parses_into_its_kind() {
-  #expect(InstallerLine("::step 4 Install skills") == .step(4, "Install skills"))
-  #expect(InstallerLine("::done 4 Installed 17 skills") == .done(4, "Installed 17 skills"))
+  #expect(InstallerLine("::step 5 Install skills") == .step(5, "Install skills"))
+  #expect(InstallerLine("::done 5 Installed 17 skills") == .done(5, "Installed 17 skills"))
   #expect(
-    InstallerLine("::warn 6 Installed no Claude Code mods, because claude is not on PATH")
-      == .warning(6, "Installed no Claude Code mods, because claude is not on PATH"))
+    InstallerLine("::warn 6 Updated no Claude Code mods, because claude is not on PATH")
+      == .warning(6, "Updated no Claude Code mods, because claude is not on PATH"))
   #expect(InstallerLine("::controls /Users/a/board/team") == .controls("/Users/a/board/team"))
   #expect(InstallerLine("::path /Users/a/.local/bin") == .path("/Users/a/.local/bin"))
   #expect(InstallerLine("::refusal Add it to PATH.") == .refusal("Add it to PATH."))
@@ -45,6 +45,19 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
   #expect(steps == InstallProgress.labels.enumerated().map { "\($0.offset + 1) \($0.element)" })
 }
 
+@Test func the_seven_labels_are_the_installers_steps_in_order() {
+  #expect(
+    InstallProgress.labels == [
+      "Check this Mac", "Copy the release", "Install board and attention-sign",
+      "Set up your boards", "Install skills", "Update Claude Code mods",
+      "Remove board-controls and attention-approve",
+    ])
+}
+
+@Test func the_sheet_shows_the_six_steps_board_app_runs() {
+  #expect(Array(InstallProgress.shown) == [1, 2, 3, 4, 5, 6])
+}
+
 @Test func a_step_is_waiting_then_running_then_done() {
   var progress = InstallProgress()
   #expect(progress.state(of: 1) == .waiting)
@@ -57,12 +70,12 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
 
 @Test func a_warning_is_kept_with_its_step() {
   let progress = progress([
-    out("::step 6 Install Claude Code mods"),
-    out("::warn 6 Installed no Claude Code mods, because claude is not on PATH"),
+    out("::step 6 Update Claude Code mods"),
+    out("::warn 6 Updated no Claude Code mods, because claude is not on PATH"),
   ])
   #expect(
     progress.state(of: 6)
-      == .warning("Installed no Claude Code mods, because claude is not on PATH")
+      == .warning("Updated no Claude Code mods, because claude is not on PATH")
   )
   #expect(progress.results.map(\.step) == [6])
 }
@@ -102,7 +115,7 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
 @Test func a_run_that_fails_during_a_step_stopped_there() {
   let progress = progress([
     out("::step 1 Check this Mac"), out("::done 1 Checked this Mac"),
-    out("::step 4 Install skills"), err("error: a folder is not Board's"),
+    out("::step 5 Install skills"), err("error: a folder is not Board's"),
     err("install: board skills install refused."),
   ])
   let outcome = InstallOutcome(progress, exit: .exited(status: 1))
@@ -110,7 +123,7 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
     outcome
       == .stopped(
         Stop(
-          stage: .step(4), refusal: "error: a folder is not Board's\nboard skills install refused.",
+          stage: .step(5), refusal: "error: a folder is not Board's\nboard skills install refused.",
           path: nil, exit: "install exited 1")))
 }
 
@@ -136,22 +149,57 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
   #expect(
     first.summary(installed: nil)
       == "The installer stopped while checking this Mac, before it changed anything.")
-  let skills = Stop(stage: .step(4), refusal: "", path: nil, exit: "")
+}
+
+@Test func the_summary_of_steps_four_to_six_says_what_is_new_and_what_is_old() {
+  func summary(_ step: Int) -> String {
+    Stop(stage: .step(step), refusal: "", path: nil, exit: "").summary(installed: "f534257a")
+  }
   #expect(
-    skills.summary(installed: "f534257a").hasPrefix(
-      "The installer stopped while installing skills."))
+    summary(4)
+      == "The installer stopped while setting up your boards. board and attention-sign are new. The boards it finished keep their change, and the skills are still the old ones."
+  )
+  #expect(
+    summary(5)
+      == "The installer stopped while installing skills. board and attention-sign are new, your boards are set up, and the skills are still the old ones."
+  )
+  #expect(
+    summary(6)
+      == "The installer stopped while updating the Claude Code mods. Everything else is installed. The mods it updated first are new, and the rest are still the old ones."
+  )
+  #expect(
+    summary(7)
+      == "The installer stopped while removing board-controls and attention-approve. Everything else is installed."
+  )
+}
+
+@Test func the_mods_were_updated_only_when_step_six_updated_at_least_one() {
+  func updated(_ line: String) -> Bool {
+    progress([out("::step 6 Update Claude Code mods"), out(line)]).updatedMods
+  }
+  #expect(updated("::done 6 Updated 2 Claude Code mods"))
+  #expect(updated("::done 6 Updated 1 Claude Code mod"))
+  #expect(
+    updated(
+      "::done 6 Updated 1 Claude Code mod and left board-old, which this release does not ship"))
+  #expect(!updated("::done 6 No Claude Code mods are installed"))
+  #expect(
+    !updated(
+      "::done 6 Updated 0 Claude Code mods and left board-old, which this release does not ship"))
+  #expect(!updated("::warn 6 Updated no Claude Code mods, because claude is not on PATH"))
+  #expect(!InstallProgress().updatedMods)
 }
 
 @Test func a_run_that_fails_after_its_last_step_without_naming_a_path_stopped_in_that_step() {
   let progress = progress([
-    out("::step 5 Enable plugins in your boards"), out("::done 5 Enabled plugins in 1 board"),
+    out("::step 4 Set up your boards"), out("::done 4 Set up 1 board"),
     err("install: something went wrong"),
   ])
   guard case .stopped(let stop) = InstallOutcome(progress, exit: .exited(status: 1)) else {
     Issue.record("the run did not stop")
     return
   }
-  #expect(stop.stage == .step(5))
+  #expect(stop.stage == .step(4))
 }
 
 @Test func a_refusal_read_before_its_step_line_still_shows() {
@@ -170,7 +218,7 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
 
 @Test func a_refusal_follows_what_a_tool_said_on_standard_error_in_its_step() {
   let progress = progress([
-    out("::step 4 Install skills"), err("error: a folder is not Board's"),
+    out("::step 5 Install skills"), err("error: a folder is not Board's"),
     err("install: board skills install refused."), out("::refusal board skills install refused."),
   ])
   #expect(progress.refusal == "error: a folder is not Board's\nboard skills install refused.")

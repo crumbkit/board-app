@@ -1,46 +1,43 @@
 # Installing a release
 
-`install` runs seven steps, and `install --hooks` all of them; without
-`--hooks` it stops after step 5. [INSTALL.md](../Install/INSTALL.md) lists
-what each step changes.
+`install` runs six steps; `install --hooks`, which Board.app never passes,
+installs every mod at step 6 and adds step 7.
+[INSTALL.md](../Install/INSTALL.md) lists what each step changes and the
+arguments.
 
 - Step 1 checks, before anything changes:
   - that `~/.local/bin` is on `PATH`, and that no directory before it on
-    `PATH` holds another `board`, which would still run;
+    `PATH` holds another `board`;
   - that `~/.local/share/board/current` is a link or absent;
   - that `~/.local/share/board/plugins/attention` and
-    `~/.claude/skills/attention` are absent or links an installer made. Such
-    a link points into a copied release, or at a board-attention checkout,
-    which `pyproject.toml` names;
-  - that the release's `board` ships at least one skill, because a `board`
-    with none would make `board skills install` remove every Board skill;
-  - that no folder in `~/.claude/skills` at the name of a Board skill is one
-    `board` did not write, except a link an installer made, which step 4
-    removes.
+    `~/.claude/skills/attention` are absent or links an installer made;
+  - that the release's `board` ships at least one skill and accepts
+    `skills list --plugins`;
+  - when the config names no personal board: that `git` runs; that the
+    board folder is missing with a writable folder above it, empty apart
+    from `.DS_Store`, a git repository with no commit and no other file, or
+    the top of a git repository holding `.board/board.json`; and that git
+    has, or is given, a name and an email. It writes the missing values last.
 - Each release is copied once to `~/.local/share/board/releases/<id>`, through
-  a `.partial-<id>` folder that is renamed only when the copy is complete.
-  Nothing writes there afterwards.
+  a `.partial-<id>` folder renamed when the copy is complete.
 - `board` and `attention-sign` are copied into `~/.local/bin` through
   `.<name>.new`. A different copy already there is kept as
   `~/.local/share/board/<name>.prev`.
-- `board skills install` writes the skills. Step 4's summary counts only the
-  skills it wrote, so an install that changed none says 0.
-- A plugin under `~/.local/share/board/plugins` that no installer linked
-  comes from elsewhere: install leaves its link and does not enable it. A
-  plugin a board names that `board` does not have
-  (`board::plugin::not_installed`) is skipped.
-- A relative path in `~/.config/board/config.json` is read against that
-  file's folder, as `board` reads it. A config that names no board makes
-  step 5 end with a `::warn` line.
-- The Claude Code marketplace is added from the copied release, not through
-  `current`, because `current` moves last. Adding a marketplace of the same
-  name re-points it and keeps its installed mods. Install never removes the
-  `board` marketplace, because Claude Code uninstalls every mod of a removed
-  marketplace and deletes their data.
-- When `claude` is not on `PATH`, or Claude Code does not uninstall an old
-  mod, the install still succeeds and says so on a `::warn` line.
-- `~/.local/share/board/current` moves to the release last, so an install
-  that stopped is offered again.
+- Step 4 runs `board init --personal` only when the config names no personal
+  board, and enables again only plugins a board already enables. A plugin
+  under `~/.local/share/board/plugins` that no installer linked, and one a
+  board names that `board` lacks (`board::plugin::not_installed`), is left.
+- A relative path in the config is read against that file's folder, as
+  `board` reads it. `$XDG_CONFIG_HOME` moves the config as it does for
+  `board`.
+- Step 5 counts only the skills it wrote, so an install that changed none
+  says 0.
+- The Claude Code marketplace is added from the copied release, because
+  `current` moves last. Adding a marketplace of the same name re-points it
+  and keeps its installed mods. Install never removes the `board`
+  marketplace, because Claude Code would uninstall its mods.
+- `current` moves to the release last, so an install that stopped is
+  offered again.
 
 ## Lines for Board.app
 
@@ -49,8 +46,8 @@ everything on standard error, is for a person.
 
 | Line | Meaning |
 | --- | --- |
-| `::step <n> <label>` | Step `n` starts, such as `::step 4 Install skills`. |
-| `::done <n> <summary>` | Step `n` finished, such as `::done 4 Installed 17 skills`. |
+| `::step <n> <label>` | Step `n` starts, such as `::step 5 Install skills`. |
+| `::done <n> <summary>` | Step `n` finished, such as `::done 5 Installed 17 skills`. |
 | `::warn <n> <summary>` | Step `n` finished and left something for the person. |
 | `::controls <path>` | A known board still names `controls`; install left it as it is. |
 | `::path <path>` | The path that the refusal names. |

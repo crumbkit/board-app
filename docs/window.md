@@ -45,23 +45,29 @@ release the app carries ([bundle](bundle.md)), the window opens with a
 sheet. It waits while the pairing sheet is open.
 
 - With no release installed, it offers Install Board on this Mac: the
-  binaries, the skills, the Claude Code mods and the plugins, with the
-  personal board named in Board's config.
+  binaries, the skills and the plugins. When Board's config names no
+  personal board, it shows the Board folder, `~/Board` until Choose…
+  picks another in a folder picker that can create one, with the reason
+  the installer would refuse it. When git also lacks a name or email, a
+  "Your name for commits" section asks for them, filled with any value
+  set. Install stays disabled until the folder passes and both are valid.
 - With another release installed, it offers Update Board: both releases'
-  crumbkit/board commits and dates, what the update replaces, updates,
-  enables and removes, and the boards that still name `controls`, with
-  Open Migration Guide, which opens `MIGRATING.md`. A Removes row shows only
-  when `board-controls@board` is installed in Claude Code, or the Python
-  attention plugin is linked or its `attention-approve` mod installed.
+  crumbkit/board commits and dates, what the update replaces, updates and
+  enables, that installed Claude Code mods are updated and keep their on or
+  off state, and the boards that still name `controls`, with Open Migration
+  Guide. A Removes row for the Python attention plugin's links shows when
+  its links or its `attention-approve` mod are found.
+  With no personal board it shows the folder and the identity section too.
 - Install or Update gets the PATH from the person's login shell (`$SHELL
-  -l -c`, five seconds at most), then runs `install --hooks` with it through
-  the one runner. When the shell fails, it runs with `~/.local/bin` before
-  the app's own PATH, and the sheet says so.
-- While it runs, the sheet shows the seven steps and the installer's
-  output as they arrive. Afterwards it shows what each step did, with a
-  warning sign on a step that left something for the person, or why the
-  install stopped, what that left behind, Show in Finder for the path the
-  installer named, Close and Try Again.
+  -l -c`, five seconds at most), then runs `install` through the one
+  runner, with `--board-folder` when there is no personal board and only
+  the git values git lacks. It never passes `--hooks`. When the shell
+  fails, it runs with `~/.local/bin` before the app's PATH, and says so.
+- While it runs, the sheet shows steps 1 to 6 and the installer's output.
+  Afterwards it shows what each step did, with a warning sign on a step
+  that left something for the person, and "Start a new Claude Code session
+  to load the updated mods" when step 6 updated one; or why the install
+  stopped, what that left behind, Show in Finder, Close and Try Again.
 - Not Now closes the sheet until the next launch. Until the release is
   installed, the menu bar icon has a dot in the accent colour and the menu
   has Install Board… or Update Board…, which shows the sheet again.

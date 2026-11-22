@@ -23,10 +23,13 @@ with it `board`, on another Mac. The ref goes to `bin/bundle`.
    --strict` and `bin/board --version` runs. When notarised, `spctl` accepts
    the image and the app.
 8. Copies the app out of the image to a scratch folder and runs its
-   `install --hooks` into a scratch home, with a stub `claude` that lists
-   nothing. The output goes to `.build/dmg/install.log`, and the check fails
-   unless the install exits 0, its last line ends with `is installed.`, and
-   the scratch home holds at least one skill that `board` wrote.
+   `install`, without `--hooks` as Board.app runs it, into a scratch home
+   with a scratch git identity and a stub `claude` that lists nothing. The
+   output goes to `.build/dmg/install.log`. The check fails unless the
+   install exits 0 and ends with `is installed.`, the scratch config names
+   `~/Board` as the personal board, that board enables exactly tasks,
+   evals, runs, rules, plans and share, and `~/.claude/skills` holds only
+   their skills.
 
 It writes `.build/dmg/Board-<version>-<release id>.dmg`, with
 `-unnotarised` before `.dmg` when the image is not notarised. The image

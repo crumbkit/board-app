@@ -71,11 +71,14 @@ public struct InstallProgress: Sendable, Hashable {
   /// The label of each step, which Install/install prints on its ::step
   /// lines. A test checks that the two lists match.
   public static let labels = [
-    "Check this Mac", "Copy the release", "Install board and attention-sign", "Install skills",
-    "Enable plugins in your boards", "Install Claude Code mods",
+    "Check this Mac", "Copy the release", "Install board and attention-sign",
+    "Set up your boards", "Install skills", "Update Claude Code mods",
     "Remove board-controls and attention-approve",
   ]
   public static let steps = 1...labels.count
+  /// The steps the sheet lists. Step 7 runs only with `install --hooks`,
+  /// which Board.app does not pass.
+  public static let shown = 1...6
 
   /// The last step that started, or 0 before any has.
   public private(set) var started = 0
@@ -120,6 +123,17 @@ public struct InstallProgress: Sendable, Hashable {
     return step == started ? .running : .waiting
   }
 
+  /// Whether step 6 updated at least one Claude Code mod: its summary
+  /// starts "Updated <n> Claude Code mod" with n above 0.
+  public var updatedMods: Bool {
+    guard case .done(let summary) = state(of: 6) else { return false }
+    let words = summary.split(separator: " ", maxSplits: 2)
+    guard words.count == 3, words[0] == "Updated", let count = Int(words[1]) else {
+      return false
+    }
+    return count > 0 && words[2].hasPrefix("Claude Code mod")
+  }
+
   /// What the step's tools said on standard error, then the installer's own
   /// refusal. Without a `::refusal` line, standard error's `install: ` lines
   /// stand in for it.
@@ -162,13 +176,16 @@ public struct Stop: Sendable, Hashable {
         "The installer stopped while installing board and attention-sign. Each binary it replaced is kept as .prev in ~/.local/share/board."
     case .step(4):
       return
-        "The installer stopped while installing skills. board and attention-sign are new, and the skills are still the old ones."
+        "The installer stopped while setting up your boards. board and attention-sign are new. The boards it finished keep their change, and the skills are still the old ones."
     case .step(5):
       return
-        "The installer stopped while enabling plugins in your boards. The boards it finished keep their change."
-    case .step(6), .step(7):
+        "The installer stopped while installing skills. board and attention-sign are new, your boards are set up, and the skills are still the old ones."
+    case .step(6):
       return
-        "The installer stopped while changing the Claude Code mods. Everything else is installed."
+        "The installer stopped while updating the Claude Code mods. Everything else is installed. The mods it updated first are new, and the rest are still the old ones."
+    case .step(7):
+      return
+        "The installer stopped while removing board-controls and attention-approve. Everything else is installed."
     case .step:
       return "The installer stopped."
     }

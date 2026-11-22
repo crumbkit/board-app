@@ -2,33 +2,61 @@
 # Installs the Board release this directory holds. INSTALL.md says what it
 # changes and when to run it.
 #
-#   install            board, attention-sign, the skills and plugin schemas
-#   install --hooks    also Board's Claude Code mods; ask the owner first
+#   install [--board-folder <path>] [--git-name <name>] [--git-email <email>] [--hooks]
 #
-# Board.app runs install --hooks and reads these lines on standard output
-# to show progress. Every other line is for a person.
+#   --board-folder   where a new personal board goes; ~/Board when left out
+#   --git-name, --git-email
+#                    the global git identity to set, each only when unset
+#   --hooks          also install every Claude Code mod and remove the old
+#                    ones; ask the owner first
+#
+# Board.app runs install without --hooks and reads these lines on standard
+# output to show progress. Every other line is for a person.
 #
 #   ::step <n> <label>      step n starts
 #   ::done <n> <summary>    step n finished
 #   ::warn <n> <summary>    step n finished and left something for the person
 #   ::controls <path>       a known board still names the controls plugin
 #   ::path <path>           the path that the refusal on standard error names
+#   ::refusal <message>     why the installer stopped
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 share="$HOME/.local/share/board"
 bin="$HOME/.local/bin"
 skills="$HOME/.claude/skills"
-config="$HOME/.config/board/config.json"
+config="${XDG_CONFIG_HOME:-$HOME/.config}/board/config.json"
 hooks=false
-case "${1:-}" in
-  "") ;;
-  --hooks) hooks=true ;;
-  *)
-    echo "install: unknown argument $1; run install or install --hooks." >&2
-    exit 2
-    ;;
+folder="$HOME/Board"
+git_name=
+git_email=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --hooks) hooks=true ;;
+    --board-folder | --git-name | --git-email)
+      if [ $# -lt 2 ]; then
+        echo "install: $1 needs a value." >&2
+        exit 2
+      fi
+      case "$1" in
+        --board-folder) folder=$2 ;;
+        --git-name) git_name=$2 ;;
+        --git-email) git_email=$2 ;;
+      esac
+      shift
+      ;;
+    *)
+      echo "install: unknown argument $1; run install [--board-folder <path>] [--git-name <name>] [--git-email <email>] [--hooks]." >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+case "$folder" in
+  /*) ;;
+  *) folder="$PWD/$folder" ;;
 esac
+while [ "$folder" != / ] && [ "${folder%/}" != "$folder" ]; do folder=${folder%/}; done
 
 current_step=0
 step() {
@@ -52,6 +80,13 @@ json_list() {
   count=$(plutil -extract "$2" raw -o - "$1" 2>/dev/null) || return 0
   for ((i = 0; i < count; i++)); do plutil -extract "$2.$i" raw -o - "$1"; done
 }
+# Prints the name of each plugin in a Claude Code marketplace file, one per
+# line.
+json_list_names() {
+  local count i
+  count=$(plutil -extract plugins raw -o - "$1" 2>/dev/null) || return 0
+  for ((i = 0; i < count; i++)); do plutil -extract "plugins.$i.name" raw -o - "$1"; done
+}
 # True when a link is one an installer of Board made: into a copied release,
 # or to a board-attention checkout, which is the Python attention plugin.
 board_link() {
@@ -63,9 +98,52 @@ board_link() {
   [ -f "$target/pyproject.toml" ] && grep -qx 'name = "board-attention"' "$target/pyproject.toml"
 }
 
+# True when the folder is the top of a git repository of its own.
+repository_top() {
+  [ -d "$1" ] && [ "$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" = "$(cd "$1" && pwd -P)" ]
+}
+# True when the text has one @, text on both sides of it and no white space,
+# the rule Board.app's sheet applies too.
+email() {
+  case "$1" in
+    *[[:space:]]* | @* | *@ | *@*@* | "") return 1 ;;
+    *@*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+# A relative path in Board's config is read against the config's folder, as
+# board reads it.
+absolute() {
+  case "$1" in
+    /*) echo "$1" ;;
+    *) echo "$(dirname "$config")/$1" ;;
+  esac
+}
+# Reads the known boards from Board's config into personal and boards.
+read_config() {
+  boards=()
+  personal=
+  [ -f "$config" ] || return 0
+  personal=$(plutil -extract personal raw -o - "$config" 2>/dev/null || true)
+  if [ -n "$personal" ]; then
+    personal=$(absolute "$personal")
+    boards+=("$personal")
+  fi
+  local board
+  while IFS= read -r board; do
+    [ -n "$board" ] || continue
+    board=$(absolute "$board")
+    if [ "$board" != "$personal" ]; then boards+=("$board"); fi
+  done < <(json_list "$config" boards)
+}
+read_config
+
 # 1. Check everything before changing anything, so a refusal leaves the old
 # install whole.
 step 1 "Check this Mac"
+if [ -n "$git_email" ] && ! email "$git_email"; then
+  refuse "" "$git_email is not an email address."
+fi
 case ":$PATH:" in
   *":$bin:"*) ;;
   *) refuse "$bin" "$bin is not on PATH, so the board it installs would not run. Add it to PATH, then try again." ;;
@@ -86,13 +164,19 @@ for path in "$share/plugins/attention" "$skills/attention"; do
   fi
 done
 # A board with no skills would make board skills install remove every
-# skill an older board wrote.
+# skill an older board wrote. Step 5 needs skills install --plugins, so a
+# board without it is refused here rather than after the binaries change.
 probe=$(mktemp -d)
 shipped=$("$here/bin/board" skills list --dir "$probe" --fields name </dev/null 2>/dev/null | tail -n +2 | wc -l) || shipped=0
-rm -rf -- "$probe"
 if [ "$shipped" -eq 0 ]; then
+  rm -rf -- "$probe"
   refuse "$here/bin/board" "$here/bin/board ships no skills, so this release is broken. Install a release built again with bin/bundle."
 fi
+if ! said=$("$here/bin/board" skills list --dir "$probe" --plugins tasks --fields name </dev/null 2>&1 >/dev/null); then
+  rm -rf -- "$probe"
+  refuse "$here/bin/board" "$here/bin/board refused skills list --plugins ($(tr '\n' ' ' <<<"$said" | sed 's/  */ /g; s/ $//')), so it cannot install only the skills of enabled plugins. Install a release whose board has it."
+fi
+rm -rf -- "$probe"
 # Another board earlier on PATH would still run in place of the new one.
 IFS=: read -r -a entries <<<"$PATH"
 for dir in "${entries[@]}"; do
@@ -101,14 +185,58 @@ for dir in "${entries[@]}"; do
     refuse "$dir/board" "$dir/board comes before $bin/board on PATH, so the old board would still run. Remove it, or put $bin first, then try again."
   fi
 done
-# board skills install refuses a folder at a skill's name that it did not
-# write. A link an older release made is removed in step 4, so it passes.
-while read -r state name _; do
-  [ "$state" = not_board ] || continue
-  if [ -L "$skills/$name" ] && board_link "$skills/$name"; then continue; fi
-  refuse "$skills/$name" "$skills/$name is not a skill board wrote, and board writes a skill of that name. Move it aside, then try again."
-done < <("$here/bin/board" skills list --dir "$skills" --fields state,name </dev/null 2>/dev/null | tail -n +2)
-echo "Checked $bin is on PATH, no other board comes first, and every link and skill folder is one Board made."
+# With no personal board, step 4 makes one, which needs git, a folder it may
+# use and a git identity for the board's commits.
+set_name=
+set_email=
+if [ -z "$personal" ]; then
+  git --version >/dev/null 2>&1 \
+    || refuse "" "git does not run on this Mac, and a personal board is a git repository. Run xcode-select --install, then try again."
+  if [ -e "$folder" ] || [ -L "$folder" ]; then
+    [ -d "$folder" ] || refuse "$folder" "$folder is a file. Choose an empty folder or an existing board."
+    # What the folder holds, apart from a .DS_Store that Finder wrote.
+    held=
+    for entry in "$folder"/.[!.]* "$folder"/..?* "$folder"/*; do
+      [ -e "$entry" ] || [ -L "$entry" ] || continue
+      [ "${entry##*/}" != .DS_Store ] || continue
+      held="$held${held:+ }${entry##*/}"
+    done
+    if [ -f "$folder/.board/board.json" ] && repository_top "$folder"; then
+      :
+    elif [ -z "$held" ]; then
+      :
+    elif [ "$held" = .git ] && repository_top "$folder" && ! git -C "$folder" rev-parse -q --verify HEAD >/dev/null; then
+      :
+    else
+      refuse "$folder" "$folder holds files and is not a board. Choose an empty folder or an existing board."
+    fi
+    [ -w "$folder" ] || refuse "$folder" "$folder cannot be written. Choose another folder."
+  else
+    above=$(dirname "$folder")
+    while [ ! -e "$above" ]; do above=$(dirname "$above"); done
+    [ -d "$above" ] && [ -w "$above" ] \
+      || refuse "$folder" "$folder cannot be created, because $above cannot be written. Choose another folder."
+  fi
+  have_name=$(git config --global --get user.name || true)
+  have_email=$(git config --global --get user.email || true)
+  if [ -z "$have_name" ] && [ -n "$git_name" ]; then set_name=$git_name; fi
+  if [ -z "$have_email" ] && [ -n "$git_email" ]; then set_email=$git_email; fi
+  if [ -z "$have_name$set_name" ] || [ -z "$have_email$set_email" ]; then
+    refuse "" "git has no name or email for your commits, and your new board commits as you. Run git config --global user.name \"Your Name\" and git config --global user.email you@example.com, or pass --git-name and --git-email, then try again."
+  fi
+fi
+# Each value is written only when git had none, so a set value never changes.
+if [ -n "$set_name" ]; then
+  git config --global user.name "$set_name" \
+    || refuse "" "git config --global user.name failed. Fix what its error says, then try again."
+  echo "Set your git name to $set_name."
+fi
+if [ -n "$set_email" ]; then
+  git config --global user.email "$set_email" \
+    || refuse "" "git config --global user.email failed. Fix what its error says, then try again."
+  echo "Set your git email to $set_email."
+fi
+echo "Checked $bin is on PATH, no other board comes first, and every link is one Board made."
 finished "Checked this Mac"
 
 # 2. Copy the release once. Nothing writes in it afterwards.
@@ -146,9 +274,75 @@ for path in "$share"/plugins/*; do
 done
 finished "Installed board and attention-sign"
 
-# 4. The skills that match the new board. A link an older release made would
-# stop board writing the skill of the same name, so the links go first.
-step 4 "Install skills"
+# 4. Make the personal board when the config names none, then enable again
+# the built-in plugins each known board already enables, which refreshes
+# their schemas. Each change is a commit. A board that still names controls
+# is left as it is, since MIGRATING.md moves it to rules by hand.
+step 4 "Set up your boards"
+missing=
+if [ -z "$personal" ]; then
+  mkdir -p "$folder" || refuse "$folder" "$folder could not be created. Choose another folder, then try again."
+  if ! repository_top "$folder"; then
+    git init -q "$folder" || refuse "$folder" "git init failed in $folder. Fix what its error says, then try again."
+    echo "Made $folder a git repository."
+  fi
+  (cd "$folder" && "$bin/board" init --personal </dev/null) \
+    || refuse "$folder" "board init --personal refused in $folder, so no personal board was set up. Fix what its error says, then try again."
+  read_config
+elif [ ! -d "$personal" ]; then
+  missing=$personal
+  echo "$config names $personal as the personal board, and it is missing, so no board was made there."
+fi
+set_up=0
+failed=()
+errors=$(mktemp)
+for board in ${boards[@]+"${boards[@]}"}; do
+  [ "$board" != "$missing" ] || continue
+  named=$(json_list "$board/.board/board.json" plugins)
+  if grep -qx controls <<<"$named"; then
+    echo "::controls $board"
+    echo "$board still names the controls plugin, so its plugins were left as they are. MIGRATING.md says how to move it to rules."
+    continue
+  fi
+  # plugin list exits 1 when a plugin from elsewhere reports a problem,
+  # and still lists every plugin.
+  plugins=$("$bin/board" -C "$board" plugin list --fields name,enabled,status --all 2>"$errors" </dev/null) || true
+  if [ -z "$plugins" ]; then
+    echo "$board: $(cat "$errors")" >&2
+    failed+=("$board")
+    continue
+  fi
+  while read -r name enabled _ code; do
+    # A plugin under $share/plugins comes from elsewhere, not from this
+    # release, so the installer leaves it to its owner. A plugin the
+    # board names that board does not have cannot be enabled.
+    [ ! -e "$share/plugins/$name" ] && [ ! -L "$share/plugins/$name" ] || continue
+    [ "$code" != board::plugin::not_installed ] || continue
+    [ "$enabled" = true ] || continue
+    if out=$("$bin/board" -C "$board" plugin enable "$name" 2>&1 </dev/null); then
+      sed "s|^|$board: |" <<<"$out"
+    else
+      echo "$board: $out" >&2
+      failed+=("$name in $board")
+    fi
+  done < <(tail -n +2 <<<"$plugins")
+  set_up=$((set_up + 1))
+done
+rm -f -- "$errors"
+if [ ${#failed[@]} -gt 0 ]; then
+  refuse "" "these were not enabled: ${failed[*]}. Fix what each error says, then try again."
+fi
+if [ $set_up -eq 1 ]; then boards_set_up="1 board"; else boards_set_up="$set_up boards"; fi
+if [ -n "$missing" ]; then
+  warn "Set up $boards_set_up and made no personal board, because $missing, which $config names, is missing"
+else
+  finished "Set up $boards_set_up"
+fi
+
+# 5. The skills of the plugins some known board enables. A link an older
+# release made would stop board writing the skill of the same name, so the
+# links go first. Board folders of other plugins' skills are kept.
+step 5 "Install skills"
 mkdir -p "$skills"
 for path in "$skills"/*; do
   if [ -L "$path" ] && board_link "$path"; then
@@ -156,138 +350,139 @@ for path in "$skills"/*; do
     echo "Removed $path, which board now writes itself."
   fi
 done
-written=$("$bin/board" skills install --all --fields state,name </dev/null) \
-  || refuse "" "board skills install refused, so the skills are still the old ones. Fix what its error says, then try again."
-echo "$written"
-finished "Installed $(awk 'NR > 1 && $1 == "written"' <<<"$written" | wc -l | tr -d ' ') skills"
-
-# 5. Enable every built-in plugin in the personal board, and enable again
-# the built-in plugins each other known board enables, which refreshes their
-# schemas. Each change is a commit. A board that still names controls is
-# left as it is, since MIGRATING.md moves it to rules by hand.
-step 5 "Enable plugins in your boards"
-# A relative path in Board's config is read against the config's folder, as
-# board reads it.
-absolute() {
-  case "$1" in
-    /*) echo "$1" ;;
-    *) echo "$(dirname "$config")/$1" ;;
-  esac
-}
-boards=()
-personal=
-if [ -f "$config" ]; then
-  personal=$(plutil -extract personal raw -o - "$config" 2>/dev/null || true)
-  if [ -n "$personal" ]; then
-    personal=$(absolute "$personal")
-    boards+=("$personal")
+chosen=()
+unread=()
+for board in ${boards[@]+"${boards[@]}"}; do
+  [ -d "$board" ] || continue
+  plugins=$("$bin/board" -C "$board" plugin list --fields name,enabled,status --all 2>/dev/null </dev/null) || true
+  if [ -z "$plugins" ]; then
+    unread+=("$board")
+    continue
   fi
-  while IFS= read -r board; do
-    [ -n "$board" ] || continue
-    board=$(absolute "$board")
-    if [ "$board" != "$personal" ]; then boards+=("$board"); fi
-  done < <(json_list "$config" boards)
-fi
-if [ ${#boards[@]} -gt 0 ]; then
-  enabled_in=0
-  failed=()
-  errors=$(mktemp)
-  for board in ${boards[@]+"${boards[@]}"}; do
-    named=$(json_list "$board/.board/board.json" plugins)
-    if grep -qx controls <<<"$named"; then
-      echo "::controls $board"
-      echo "$board still names the controls plugin, so its plugins were left as they are. MIGRATING.md says how to move it to rules."
-      continue
-    fi
-    # plugin list exits 1 when a plugin from elsewhere reports a problem,
-    # and still lists every plugin.
-    plugins=$("$bin/board" -C "$board" plugin list --fields name,enabled,status --all 2>"$errors" </dev/null) || true
-    if [ -z "$plugins" ]; then
-      echo "$board: $(cat "$errors")" >&2
-      failed+=("$board")
-      continue
-    fi
-    while read -r name enabled _ code; do
-      # A plugin under $share/plugins comes from elsewhere, not from this
-      # release, so the installer leaves it to its owner. A plugin the
-      # board names that board does not have cannot be enabled.
-      [ ! -e "$share/plugins/$name" ] && [ ! -L "$share/plugins/$name" ] || continue
-      [ "$code" != board::plugin::not_installed ] || continue
-      [ "$board" = "$personal" ] || [ "$enabled" = true ] || continue
-      if out=$("$bin/board" -C "$board" plugin enable "$name" 2>&1 </dev/null); then
-        sed "s|^|$board: |" <<<"$out"
-      else
-        echo "$board: $out" >&2
-        failed+=("$name in $board")
-      fi
-    done < <(tail -n +2 <<<"$plugins")
-    enabled_in=$((enabled_in + 1))
-  done
-  rm -f -- "$errors"
-  if [ ${#failed[@]} -gt 0 ]; then
-    refuse "" "these were not enabled: ${failed[*]}. Fix what each error says, then try again."
-  fi
-  if [ $enabled_in -eq 1 ]; then finished "Enabled plugins in 1 board"; else finished "Enabled plugins in $enabled_in boards"; fi
+  while read -r name enabled _ code; do
+    [ ! -e "$share/plugins/$name" ] && [ ! -L "$share/plugins/$name" ] || continue
+    [ "$code" != board::plugin::not_installed ] || continue
+    [ "$enabled" = true ] || continue
+    chosen+=("$name")
+  done < <(tail -n +2 <<<"$plugins")
+done
+selected=$(printf '%s\n' ${chosen[@]+"${chosen[@]}"} | sort -u | paste -sd, -)
+if [ -n "$selected" ]; then
+  written=$("$bin/board" skills install --plugins "$selected" --fields state,name </dev/null) \
+    || refuse "" "board skills install refused, so the skills are still the old ones. Fix what its error says, then try again."
+  echo "$written"
+  count=$(awk 'NR > 1 && $1 == "written"' <<<"$written" | wc -l | tr -d ' ')
 else
-  echo "$config names no board, so no board's plugins were enabled."
-  warn "Enabled no plugins, because $config does not name a personal board"
+  echo "No board enables a plugin, so no skills were written."
+  count=0
+fi
+if [ ${#unread[@]} -gt 0 ]; then
+  warn "Installed $count skills, and could not read the plugins of ${unread[*]}"
+else
+  finished "Installed $count skills"
 fi
 
 # 6. Board's Claude Code mods, from one marketplace named board in the copied
 # release. Adding it again re-points a marketplace of that name and keeps
 # its installed mods; removing it would uninstall them and delete their
-# data. The new mods go in before the old ones come out.
-if $hooks; then
-  step 6 "Install Claude Code mods"
-  if ! command -v claude >/dev/null; then
-    echo "claude is not on PATH, so no Claude Code mods were installed."
-    warn "Installed no Claude Code mods, because claude is not on PATH"
+# data. Without --hooks only the Board mods already installed are updated,
+# and nothing is installed, enabled or disabled, so each keeps its on or off
+# state. With --hooks every mod is installed, the new ones before the old
+# ones come out.
+step 6 "Update Claude Code mods"
+if ! command -v claude >/dev/null; then
+  echo "claude is not on PATH, so no Claude Code mods were updated."
+  warn "Updated no Claude Code mods, because claude is not on PATH"
+elif ! $hooks; then
+  listed=$(mktemp)
+  claude plugin list --json </dev/null >"$listed" \
+    || { rm -f -- "$listed"; refuse "" "Claude Code did not list its mods. Fix what its error says, then try again."; }
+  # The list is a JSON array, whose length plutil cannot read, so it reads
+  # items until one is missing. A mod installed in two scopes is listed twice.
+  installed=()
+  i=0
+  while plutil -extract "$i" json -o /dev/null "$listed" 2>/dev/null; do
+    mod=$(plutil -extract "$i.id" raw -o - "$listed" 2>/dev/null || true)
+    case "$mod" in *@board) installed+=("${mod%@board}") ;; esac
+    i=$((i + 1))
+  done
+  rm -f -- "$listed"
+  unique=()
+  while IFS= read -r name; do
+    if [ -n "$name" ]; then unique+=("$name"); fi
+  done < <(printf '%s\n' ${installed[@]+"${installed[@]}"} | sort -u)
+  installed=(${unique[@]+"${unique[@]}"})
+  if [ ${#installed[@]} -eq 0 ]; then
+    echo "No Claude Code mods are installed from Board, so none were updated or added."
+    finished "No Claude Code mods are installed"
   else
-    count=$(plutil -extract plugins raw -o - "$release/.claude-plugin/marketplace.json")
-    mods=()
-    for ((i = 0; i < count; i++)); do
-      mods+=("$(plutil -extract "plugins.$i.name" raw -o - "$release/.claude-plugin/marketplace.json")")
-    done
-    marketplaces=$(claude plugin marketplace list --json </dev/null)
+    shipped=$(json_list_names "$release/.claude-plugin/marketplace.json")
     claude plugin marketplace add "$release" </dev/null \
       || refuse "" "Claude Code did not add the board marketplace from $release. Fix what its error says, then try again."
-    for name in ${mods[@]+"${mods[@]}"}; do
-      claude plugin install "$name@board" </dev/null \
-        || refuse "" "Claude Code did not install $name@board. Fix what its error says, then try again."
+    updated=0
+    left=()
+    for name in "${installed[@]}"; do
+      if ! grep -qx "$name" <<<"$shipped"; then
+        left+=("$name")
+        continue
+      fi
       claude plugin update "$name@board" </dev/null \
         || refuse "" "Claude Code did not update $name@board. Fix what its error says, then try again."
+      updated=$((updated + 1))
     done
-    echo "Installed the Claude Code mods ${mods[*]}. They load in sessions started from now on."
-    finished "Installed ${#mods[@]} Claude Code mods"
-
-    # 7. The mods the new ones replace: board-controls is now board-rules,
-    # and attention-approve, from the attention marketplace on GitHub, is
-    # now board-attention.
-    step 7 "Remove board-controls and attention-approve"
-    installed=$(claude plugin list --json </dev/null)
-    removed=()
-    left=()
-    for mod in board-controls@board attention-approve@attention; do
-      grep -qF "\"$mod\"" <<<"$installed" || continue
-      if claude plugin uninstall "$mod" </dev/null; then
-        removed+=("${mod%@*}")
-      else
-        left+=("$mod")
-      fi
-    done
-    if grep -q '"name": *"attention"' <<<"$marketplaces"; then
-      claude plugin marketplace remove attention </dev/null || left+=("the attention marketplace")
-    fi
+    if [ $updated -eq 0 ]; then summary="Updated no Claude Code mods"
+    elif [ $updated -eq 1 ]; then summary="Updated 1 Claude Code mod"
+    else summary="Updated $updated Claude Code mods"; fi
     if [ ${#left[@]} -gt 0 ]; then
-      echo "Claude Code did not remove ${left[*]}. Remove each with claude plugin uninstall."
-      warn "Did not remove ${left[*]}; remove each with claude plugin uninstall"
-    elif [ ${#removed[@]} -eq 2 ]; then
-      finished "Removed ${removed[0]} and ${removed[1]}"
-    elif [ ${#removed[@]} -eq 1 ]; then
-      finished "Removed ${removed[0]}"
-    else
-      finished "Found no old mods to remove"
+      left_names=$(printf '%s\n' "${left[@]}" | paste -sd, - | sed 's/,\([^,]*\)$/ and \1/; s/,/, /g')
+      if [ ${#left[@]} -eq 1 ]; then ships="does"; else ships="do"; fi
+      summary="$summary and left $left_names, which this release $ships not ship"
     fi
+    echo "$summary. Each keeps its on or off state, and they load in sessions started from now on."
+    finished "$summary"
+  fi
+else
+  mods=()
+  while IFS= read -r name; do mods+=("$name"); done < <(json_list_names "$release/.claude-plugin/marketplace.json")
+  marketplaces=$(claude plugin marketplace list --json </dev/null)
+  claude plugin marketplace add "$release" </dev/null \
+    || refuse "" "Claude Code did not add the board marketplace from $release. Fix what its error says, then try again."
+  for name in ${mods[@]+"${mods[@]}"}; do
+    claude plugin install "$name@board" </dev/null \
+      || refuse "" "Claude Code did not install $name@board. Fix what its error says, then try again."
+    claude plugin update "$name@board" </dev/null \
+      || refuse "" "Claude Code did not update $name@board. Fix what its error says, then try again."
+  done
+  echo "Installed the Claude Code mods ${mods[*]}. They load in sessions started from now on."
+  finished "Installed ${#mods[@]} Claude Code mods"
+
+  # 7. The mods the new ones replace: board-controls is now board-rules,
+  # and attention-approve, from the attention marketplace on GitHub, is
+  # now board-attention.
+  step 7 "Remove board-controls and attention-approve"
+  listed=$(claude plugin list --json </dev/null)
+  removed=()
+  left=()
+  for mod in board-controls@board attention-approve@attention; do
+    grep -qF "\"$mod\"" <<<"$listed" || continue
+    if claude plugin uninstall "$mod" </dev/null; then
+      removed+=("${mod%@*}")
+    else
+      left+=("$mod")
+    fi
+  done
+  if grep -q '"name": *"attention"' <<<"$marketplaces"; then
+    claude plugin marketplace remove attention </dev/null || left+=("the attention marketplace")
+  fi
+  if [ ${#left[@]} -gt 0 ]; then
+    echo "Claude Code did not remove ${left[*]}. Remove each with claude plugin uninstall."
+    warn "Did not remove ${left[*]}; remove each with claude plugin uninstall"
+  elif [ ${#removed[@]} -eq 2 ]; then
+    finished "Removed ${removed[0]} and ${removed[1]}"
+  elif [ ${#removed[@]} -eq 1 ]; then
+    finished "Removed ${removed[0]}"
+  else
+    finished "Found no old mods to remove"
   fi
 fi
 

@@ -47,17 +47,19 @@ struct InstallSheet: View {
         Divider()
         item("doc.text", "Skills", Text("Board's skills, written to \(code("~/.claude/skills"))"))
         Divider()
-        item(
-          "square.grid.2x2", "Claude Code mods",
-          Text("\(modNames), from the marketplace inside Board.app"))
-        Divider()
         item("puzzlepiece.extension", "Plugins", plugins)
+        if model.makesPersonalBoard {
+          Divider()
+          folderRow
+        }
       }
       .modifier(Box())
+      identitySection
       footer(meta: true) {
         Button("Not Now", action: model.notNow).keyboardShortcut(.cancelAction)
         Button("Install", action: model.install)
           .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+          .disabled(!model.canInstall)
       }
     }
   }
@@ -65,18 +67,80 @@ struct InstallSheet: View {
   private var plugins: Text {
     guard let personal = model.survey.personal else {
       return Text(
-        "No personal board is named in \(code("~/.config/board/config.json")) yet, so none are enabled"
+        "You have no personal board yet, so one is created in the Board folder with six plugins: tasks, evals, runs, rules, plans and share."
       )
     }
     return Text("Enabled in your personal board, \(code(tilde(personal)))")
   }
 
-  /// "board-attention, board-rules and 6 more", naming those two first.
-  private var modNames: String {
-    let first = ["board-attention", "board-rules"].filter(model.mods.contains)
-    let named = first + model.mods.filter { !first.contains($0) }
-    guard named.count > 2 else { return named.joined(separator: " and ") }
-    return "\(named[0]), \(named[1]) and \(named.count - 2) more"
+  /// The folder a new personal board goes in, with Choose… and the reason
+  /// the installer would refuse it.
+  private var folderRow: some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(systemName: "folder").frame(width: 18)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Board folder").fontWeight(.semibold)
+        code(tilde(model.boardFolder)).foregroundStyle(.secondary)
+        if case .refused(let reason) = model.folderCheck {
+          Text(homeAsTilde(reason)).font(.caption).foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      Spacer(minLength: 0)
+      Button("Choose…", action: chooseFolder).controlSize(.small)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 12)
+  }
+
+  /// A folder picker that can create a folder, starting at the folder chosen now.
+  private func chooseFolder() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.prompt = "Choose"
+    panel.directoryURL = model.boardFolder.deletingLastPathComponent()
+    if panel.runModal() == .OK, let url = panel.url { model.choose(url) }
+  }
+
+  /// The name and email git lacks, which the installer sets for the account.
+  @ViewBuilder private var identitySection: some View {
+    if model.asksIdentity {
+      @Bindable var model = model
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Your name for commits").fontWeight(.semibold)
+        Text(
+          "Your board records who wrote each change. Git has no name or email on this Mac yet, so Board sets them for your account."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+          GridRow {
+            Text("Name").gridColumnAlignment(.trailing)
+            TextField("Name", text: $model.gitName).labelsHidden()
+              .disabled(model.identity?.name != nil)
+          }
+          GridRow {
+            Text("Email")
+            TextField("Email", text: $model.gitEmail).labelsHidden()
+              .disabled(model.identity?.email != nil)
+          }
+          if model.emailRefused {
+            GridRow {
+              Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+              Text("Enter an email address, such as ana@example.com.")
+                .font(.caption).foregroundStyle(.red)
+            }
+          }
+        }
+        .font(.callout)
+      }
+      .padding(.vertical, 10).padding(.horizontal, 12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .modifier(Box())
+    }
   }
 
   // MARK: Update an older install
@@ -96,27 +160,31 @@ struct InstallSheet: View {
             "\(code("board")) and \(code("attention-sign")) in \(code("~/.local/bin")), keeping the old ones as \(code(".prev"))"
           ))
         Divider()
-        change("Updates", Text("Board's skills and \(model.mods.count) Claude Code mods"))
+        change("Updates", Text("Board's skills"))
         Divider()
         change("Enables", enables)
-        if model.survey.old.contains(.boardControls) {
+        if model.makesPersonalBoard {
           Divider()
-          change("Removes", Text("the board-controls mod, now board-rules"), muted: true)
+          folderRow
         }
         if model.survey.old.contains(.pythonAttention) {
           Divider()
-          change(
-            "Removes",
-            Text("the old Python attention plugin's links and its attention-approve mod"),
-            muted: true)
+          change("Removes", Text("the old Python attention plugin's links"), muted: true)
         }
       }
       .modifier(Box())
+      Text(
+        "The Claude Code mods you have installed are updated and keep their on or off state. No new mods are added."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      identitySection
       controlsNote(model.survey.controls.map(\.path), verb: "Updating")
       footer(meta: false) {
         Button("Not Now", action: model.notNow).keyboardShortcut(.cancelAction)
         Button("Update", action: model.install)
           .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+          .disabled(!model.canInstall)
       }
     }
   }
@@ -127,7 +195,10 @@ struct InstallSheet: View {
     let others = survey.others.map { code($0.lastPathComponent) }
     var text =
       personal.map { Text("the plugins in \(code(tilde($0)))") }
-      ?? Text("no personal board's plugins")
+      ?? (model.makesPersonalBoard
+        ? Text(
+          "tasks, evals, runs, rules, plans and share in a new personal board in the Board folder")
+        : Text("no personal board's plugins"))
     if !others.isEmpty {
       text = Text("\(text), and refreshes the plugins \(listed(others)) already enable")
     }
@@ -162,7 +233,7 @@ struct InstallSheet: View {
     Group {
       Text(model.updating ? "Updating Board" : "Installing Board").font(.title2.bold())
       VStack(alignment: .leading, spacing: 7) {
-        ForEach(InstallProgress.steps, id: \.self) { step in
+        ForEach(InstallProgress.shown, id: \.self) { step in
           let state = model.progress.state(of: step)
           HStack(spacing: 10) {
             symbol(state)
@@ -260,14 +331,12 @@ struct InstallSheet: View {
           }
         }
       }
-      if case .done = model.progress.state(of: 6) {
-        Text(
-          "Start a new Claude Code session to load the new mods. Sessions already open keep the mods they started with."
-        )
-        .font(.callout)
-        .padding(.vertical, 10).padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+      if model.progress.updatedMods {
+        Text("Start a new Claude Code session to load the updated mods.")
+          .font(.callout)
+          .padding(.vertical, 10).padding(.horizontal, 12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
       }
       controlsNote(model.progress.controls, verb: "Installing")
       pathNote

@@ -14,7 +14,8 @@
 # Board-<version>-<release id>-unnotarised.dmg when the image is not
 # notarised. The image gets that name only after it checks the signatures,
 # the hardened runtime, that the bundled board runs from the mounted image,
-# and that the installer in a copy of the app installs into a scratch home.
+# and that the installer in a copy of the app installs into a scratch home
+# and makes a personal board there.
 # Any failed check stops it with an error.
 set -eu
 cd "$(dirname "$0")/.."
@@ -146,21 +147,38 @@ if [ "$notarised" = yes ]; then
   spctl -a -t open --context context:primary-signature -v "$unfinished"
   spctl -a -vv "$mounted"
 fi
-# Install from a copy of the app, as a person who dragged it out would, into
-# a scratch home with no boards and a claude that answers every list with
-# nothing. The real claude and the real home are never touched.
+# Install from a copy of the app, as a person who dragged it out would and
+# as Board.app runs it, without --hooks: into a scratch home with no boards,
+# a scratch git identity and a claude that answers every list with nothing.
+# The real claude, git config and home are never touched.
 ditto "$mounted" "$scratch/Board.app"
-mkdir -p "$scratch/home/.local/bin" "$scratch/stub"
+# board writes canonical paths into its config, and mktemp names /var, a
+# link to /private/var.
+home=$(cd "$scratch" && pwd -P)/home
+mkdir -p "$home/.local/bin" "$scratch/stub"
 printf '#!/bin/sh\ncase "$*" in *--json) echo "[]" ;; esac\n' >"$scratch/stub/claude"
 chmod +x "$scratch/stub/claude"
-HOME="$scratch/home" PATH="$scratch/home/.local/bin:$scratch/stub:/usr/bin:/bin:/usr/sbin:/sbin" \
-  "$scratch/Board.app/Contents/Resources/board/install" --hooks >"$out/install.log" 2>&1 ||
+printf '[user]\n\tname = Board image check\n\temail = image-check@example.invalid\n' >"$scratch/gitconfig"
+env -u XDG_CONFIG_HOME HOME="$home" PATH="$home/.local/bin:$scratch/stub:/usr/bin:/bin:/usr/sbin:/sbin" \
+  GIT_CONFIG_GLOBAL="$scratch/gitconfig" GIT_CONFIG_NOSYSTEM=1 \
+  "$scratch/Board.app/Contents/Resources/board/install" >"$out/install.log" 2>&1 ||
   { cat "$out/install.log" >&2; fail "the installer in the image did not install into a scratch home"; }
 tail -n 1 "$out/install.log" | grep -q 'is installed\.$' ||
   { cat "$out/install.log" >&2; fail "the installer in the image did not end with \"is installed\""; }
-ls "$scratch/home/.claude/skills"/*/.board-skill >/dev/null 2>&1 ||
-  fail "the installer in the image wrote no Board skills, so its board ships none"
-echo "The installer in the image installs into a scratch home, skills included."
+personal=$(plutil -extract personal raw -o - "$home/.config/board/config.json" 2>/dev/null) || personal=
+[ "$personal" = "$home/Board" ] ||
+  fail "the installer in the image did not name ~/Board as the personal board in the scratch home's config"
+six="evals plans rules runs share tasks"
+enabled=$(GIT_CONFIG_GLOBAL="$scratch/gitconfig" "$home/.local/bin/board" -C "$home/Board" plugin list --fields name,enabled --all </dev/null 2>/dev/null |
+  awk 'NR > 1 && $2 == "true" { print $1 }' | sort | tr '\n' ' ' | sed 's/ $//')
+[ "$enabled" = "$six" ] ||
+  fail "the personal board the installer in the image made enables \"$enabled\", not the six plugins $six"
+wanted=$("$home/.local/bin/board" skills list --dir "$scratch/no-skills" --plugins "$(echo "$six" | tr ' ' ',')" --fields name </dev/null |
+  tail -n +2 | sort | tr '\n' ' ')
+written=$(ls "$home/.claude/skills" | sort | tr '\n' ' ')
+[ -n "$written" ] && [ "$written" = "$wanted" ] ||
+  fail "the installer in the image wrote the skills \"$written\", not only the six plugins' skills \"$wanted\""
+echo "The installer in the image installs into a scratch home, with a personal board at ~/Board that enables the six plugins, and only their skills."
 
 if [ "$notarised" = yes ]; then
   dmg="$out/Board-$version-$id.dmg"
