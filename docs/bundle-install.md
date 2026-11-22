@@ -17,7 +17,8 @@ arguments.
     board folder is missing with a writable folder above it, empty apart
     from `.DS_Store`, a git repository with no commit and no other file, or
     the top of a git repository holding `.board/board.json`; and that git
-    has, or is given, a name and an email. It writes the missing values last.
+    has, or is given, a name and an email. A value set in a file the global
+    git config includes counts as set. It writes the missing values last.
 - Each release is copied once to `~/.local/share/board/releases/<id>`, through
   a `.partial-<id>` folder renamed when the copy is complete.
 - `board` and `attention-sign` are copied into `~/.local/bin` through

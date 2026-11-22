@@ -199,6 +199,16 @@ printf '[user]\n\tname = Kept Name\n' >"$scratch/name-gitconfig"
 GIT_CONFIG_GLOBAL="$scratch/name-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "ana@example.com" >"$HOME/out" 2>"$HOME/err"
 check "with user.name set, only the email is written" "[ \$? -eq 0 ] && [ \"\$(GIT_CONFIG_GLOBAL='$scratch/name-gitconfig' git config --global user.name)\" = 'Kept Name' ] && [ \"\$(GIT_CONFIG_GLOBAL='$scratch/name-gitconfig' git config --global user.email)\" = ana@example.com ]"
 
+bare included
+printf '[user]\n\tname = Included Name\n\temail = included@example.com\n' >"$scratch/included-gitconfig"
+printf '[include]\n\tpath = %s\n' "$scratch/included-gitconfig" >"$scratch/include-gitconfig"
+cp "$scratch/include-gitconfig" "$scratch/include-gitconfig.before"
+GIT_CONFIG_GLOBAL="$scratch/include-gitconfig" "$bundle/install" >"$HOME/out" 2>"$HOME/err"
+check "an identity set in a file the global config includes counts as set" "[ \$? -eq 0 ] && installed_ok && [ \"\$(git -C '$HOME/Board' log -1 --format='%an <%ae>')\" = 'Included Name <included@example.com>' ]"
+bare included-given
+GIT_CONFIG_GLOBAL="$scratch/include-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "other@example.com" >"$HOME/out" 2>"$HOME/err"
+check "and the given name and email do not write a [user] section over it" "[ \$? -eq 0 ] && cmp -s '$scratch/include-gitconfig' '$scratch/include-gitconfig.before' && [ \"\$(git -C '$HOME/Board' log -1 --format='%an <%ae>')\" = 'Included Name <included@example.com>' ]"
+
 echo "Claude Code mods without --hooks:"
 home mods
 printf 'board\n' >"$HOME/marketplaces.txt"

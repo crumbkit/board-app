@@ -56,7 +56,7 @@ sheet. It waits while the pairing sheet is open.
   enables, that installed Claude Code mods are updated and keep their on or
   off state, and the boards that still name `controls`, with Open Migration
   Guide. A Removes row for the Python attention plugin's links shows when
-  its links or its `attention-approve` mod are found.
+  one of those links exists.
   With no personal board it shows the folder and the identity section too.
 - Install or Update gets the PATH from the person's login shell (`$SHELL
   -l -c`, five seconds at most), then runs `install` through the one

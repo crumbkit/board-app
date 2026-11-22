@@ -96,11 +96,13 @@ private struct Home: ~Copyable {
   #expect(Machine(home: home.url).survey().old == [.pythonAttention, .boardControls])
 }
 
-@Test func the_attention_approve_mod_alone_counts_as_the_old_attention_plugin() throws {
+@Test func the_attention_approve_mod_alone_is_not_the_old_attention_plugins_links() throws {
   let home = try Home()
   try home.write(
     ".claude/plugins/installed_plugins.json",
     #"{"plugins": {"attention-approve@attention": []}}"#)
+  #expect(Machine(home: home.url).survey().old == [])
+  try home.link(".claude/skills/attention", to: "/somewhere/board-attention")
   #expect(Machine(home: home.url).survey().old == [.pythonAttention])
 }
 

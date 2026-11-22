@@ -6,7 +6,7 @@ import Launcher
 
 /// A piece of an older Board that the install removes.
 public enum OldPiece: Sendable, Hashable {
-  /// The Python attention plugin's links, or its attention-approve mod.
+  /// The Python attention plugin's links, which the install removes.
   case pythonAttention
   /// The board-controls mod, which board-rules replaces.
   case boardControls
@@ -70,7 +70,7 @@ public struct Machine: Sendable {
     // Nil is right: no link there means the old plugin is not linked.
     if links.contains(where: {
       (try? FileManager.default.destinationOfSymbolicLink(atPath: $0.path)) != nil
-    }) || installed.contains("attention-approve@attention") {
+    }) {
       old.append(.pythonAttention)
     }
     if installed.contains("board-controls@board") { old.append(.boardControls) }

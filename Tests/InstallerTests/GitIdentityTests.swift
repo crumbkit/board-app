@@ -45,6 +45,13 @@ private struct GlobalConfig: ~Copyable {
   #expect(identity == GitIdentity(name: "Ana Silva", email: "ana@example.com"))
 }
 
+@Test func an_identity_in_a_file_the_global_config_includes_counts() async throws {
+  let included = try GlobalConfig("[user]\n\tname = Ana Silva\n\temail = ana@example.com\n")
+  let config = try GlobalConfig("[include]\n\tpath = \(included.url.path)\n")
+  let identity = await GitIdentity.read(git: config.git)
+  #expect(identity == GitIdentity(name: "Ana Silva", email: "ana@example.com"))
+}
+
 @Test func an_unset_or_blank_value_reads_as_nil() async throws {
   let config = try GlobalConfig("[user]\n\tname = \"  \"\n")
   let identity = await GitIdentity.read(git: config.git)

@@ -17,7 +17,8 @@ public struct GitIdentity: Sendable, Hashable {
   /// Whether git has both a name and an email.
   public var complete: Bool { name != nil && email != nil }
 
-  /// Reads both values with `git config --global --get`. `git` is the
+  /// Reads both values with `git config --global --includes --get`, so a
+  /// value set in a file the global config includes counts. `git` is the
   /// command that runs git. A git that does not run reads as no identity.
   public static func read(
     git: [String] = ["/usr/bin/git"], runner: Runner = Runner(timeout: .seconds(5))
@@ -35,7 +36,7 @@ public struct GitIdentity: Sendable, Hashable {
   }
 
   private static func value(_ key: String, git: [String], runner: Runner) async -> String? {
-    let result = await runner.run(git + ["config", "--global", "--get", key])
+    let result = await runner.run(git + ["config", "--global", "--includes", "--get", key])
     // Nil is right: git exits 1 for an unset key, and a git that fails sets nothing.
     guard let output = try? result.output() else { return nil }
     let value = String(decoding: output, as: UTF8.self).trimmingCharacters(

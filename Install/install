@@ -217,8 +217,11 @@ if [ -z "$personal" ]; then
     [ -d "$above" ] && [ -w "$above" ] \
       || refuse "$folder" "$folder cannot be created, because $above cannot be written. Choose another folder."
   fi
-  have_name=$(git config --global --get user.name || true)
-  have_email=$(git config --global --get user.email || true)
+  # --includes reads the files the global config includes, which naming
+  # --global otherwise skips, so a value set there counts and is never
+  # overridden.
+  have_name=$(git config --global --includes --get user.name || true)
+  have_email=$(git config --global --includes --get user.email || true)
   if [ -z "$have_name" ] && [ -n "$git_name" ]; then set_name=$git_name; fi
   if [ -z "$have_email" ] && [ -n "$git_email" ]; then set_email=$git_email; fi
   if [ -z "$have_name$set_name" ] || [ -z "$have_email$set_email" ]; then
