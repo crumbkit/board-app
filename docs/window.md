@@ -50,8 +50,9 @@ sheet. It waits while the pairing sheet is open.
   picks another in a folder picker that can create one, with the reason
   the installer would refuse it. When git also lacks a name or email, a
   "Your name for commits" section asks for them, filled with any value
-  set. When git's identity comes only from an `[includeIf]` section, the
-  section shows the installer's refusal instead of the fields. Install
+  set. When a value is unset and the global git config has an
+  `[includeIf]` section that may set it, the section shows the installer's
+  refusal instead of its explanation and the fields. Install
   stays disabled until the folder passes and both are valid.
 - With another release installed, it offers Update Board: both releases'
   crumbkit/board commits and dates, what the update replaces, updates and

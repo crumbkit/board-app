@@ -111,15 +111,15 @@ struct InstallSheet: View {
       @Bindable var model = model
       VStack(alignment: .leading, spacing: 8) {
         Text("Your name for commits").fontWeight(.semibold)
-        Text(
-          "Your board records who wrote each change. Git has no name or email on this Mac yet, so Board sets them for your account."
-        )
-        .font(.caption).foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
         if let problem = model.identity?.problem {
           Text(problem).font(.caption).foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
         } else {
+          Text(
+            "Your board records who wrote each change. Git has no name or email on this Mac yet, so Board sets them for your account."
+          )
+          .font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
           Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
             GridRow {
               Text("Name").gridColumnAlignment(.trailing)

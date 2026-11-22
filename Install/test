@@ -219,6 +219,13 @@ GIT_CONFIG_GLOBAL="$scratch/includeif-gitconfig" "$bundle/install" >"$HOME/out" 
 check "an identity set only through a conditional include stops it at step 1 and names the include" "[ \$? -ne 0 ] && grep -q '^::refusal .*conditional include' '$HOME/out' && ! grep -q '^::step 2' '$HOME/out'"
 GIT_CONFIG_GLOBAL="$scratch/includeif-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "other@example.com" >"$HOME/out" 2>"$HOME/err"
 check "and with a name and email given it still refuses and writes nothing" "[ \$? -ne 0 ] && grep -q '^::refusal .*conditional include' '$HOME/out' && cmp -s '$scratch/includeif-gitconfig' '$scratch/includeif-gitconfig.before' && [ ! -e '$share' ] && [ ! -e '$HOME/Board' ]"
+bare nested-include-if
+# The [includeIf] sits in a file the global config pulls in with [include].
+printf '[includeIf "gitdir:/"]\n\tpath = %s\n' "$scratch/included-gitconfig" >"$scratch/nested-includeif"
+printf '[include]\n\tpath = %s\n' "$scratch/nested-includeif" >"$scratch/nested-gitconfig"
+cp "$scratch/nested-gitconfig" "$scratch/nested-gitconfig.before"
+GIT_CONFIG_GLOBAL="$scratch/nested-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "other@example.com" >"$HOME/out" 2>"$HOME/err"
+check "a conditional include inside an included file also refuses and writes nothing" "[ \$? -ne 0 ] && grep -q '^::refusal .*conditional include' '$HOME/out' && cmp -s '$scratch/nested-gitconfig' '$scratch/nested-gitconfig.before' && [ ! -e '$share' ] && [ ! -e '$HOME/Board' ]"
 
 echo "Claude Code mods without --hooks:"
 home mods

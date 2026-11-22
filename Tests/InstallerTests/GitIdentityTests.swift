@@ -64,6 +64,15 @@ private struct GlobalConfig: ~Copyable {
   #expect(identity.problem == GitIdentity.conditionalProblem)
 }
 
+@Test func a_conditional_include_inside_an_included_file_is_reported() async throws {
+  let included = try GlobalConfig("[user]\n\tname = Ana Silva\n\temail = ana@example.com\n")
+  let nested = try GlobalConfig("[includeIf \"gitdir:/\"]\n\tpath = \(included.url.path)\n")
+  let config = try GlobalConfig("[include]\n\tpath = \(nested.url.path)\n")
+  let identity = await GitIdentity.read(git: config.git)
+  #expect(identity == GitIdentity(name: nil, email: nil, conditional: true))
+  #expect(identity.problem == GitIdentity.conditionalProblem)
+}
+
 @Test func a_conditional_include_beside_a_set_identity_changes_nothing() async throws {
   let config = try GlobalConfig(
     "[user]\n\tname = Ana Silva\n\temail = ana@example.com\n[includeIf \"gitdir:~/work/\"]\n\tpath = /nowhere\n"

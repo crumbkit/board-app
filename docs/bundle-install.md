@@ -19,7 +19,8 @@ arguments.
     the top of a git repository holding `.board/board.json`; and that git
     has, or is given, a name and an email. A value set in a file the global
     git config includes counts as set. When a value is unset and the global
-    config has an `[includeIf]` section, step 1 refuses and writes nothing. It writes the missing values last.
+    config, or a file it includes, has an `[includeIf]` section, step 1
+    refuses and writes nothing. It writes the missing values last.
 - Each release is copied once to `~/.local/share/board/releases/<id>`, through
   a `.partial-<id>` folder renamed when the copy is complete.
 - `board` and `attention-sign` are copied into `~/.local/bin` through
