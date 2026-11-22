@@ -1,0 +1,240 @@
+# The Board.app release. It builds Board.dmg with bin/dmg on the image whose
+# Xcode .xcode-version names: the Mac app carries a Board release built from
+# crumbkit/board, and the app and the image are signed with the Developer ID,
+# notarised and stapled. The image gets a build provenance attestation, and
+# a tag push attaches it and SHA256SUMS to a GitHub release.
+#
+# A push of the tag `v<version>` releases that tag, where <version> is
+# MARKETING_VERSION in project.yml. The tagged commit must be on main, and
+# the app carries crumbkit/board at its tag `v<version>`, which must have a
+# published release. A manual run builds, signs and attests the image with
+# the crumbkit/board ref its board_ref input names, and releases nothing.
+# A pull request that changes this file or the scripts it runs builds the
+# Board release and both apps unsigned, which needs no secrets. The signing
+# job reads its secrets from the `release` environment, which docs/release.md
+# describes.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: [.github/workflows/release.yml, bin/bundle, bin/dmg, bin/project]
+  workflow_dispatch:
+    inputs:
+      board_ref:
+        description: The crumbkit/board ref whose Board release the app carries, such as v0.1.0.
+        type: string
+        default: origin/main
+
+# Each job grants only the permissions it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # The version project.yml holds, which a tag must name, and the
+  # crumbkit/board ref the app carries.
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      board_ref: ${{ steps.board.outputs.board_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # The check that the tag is on main reads origin/main.
+          persist-credentials: false
+      - id: version
+        run: |
+          version=$(sed -n 's/^ *MARKETING_VERSION: *"\(.*\)"$/\1/p' project.yml)
+          [ -n "$version" ] || { echo "project.yml sets no MARKETING_VERSION" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "the tag is $GITHUB_REF_NAME and project.yml's MARKETING_VERSION is $version" >&2
+              exit 1
+            fi
+            git rev-parse --verify --quiet origin/main >/dev/null ||
+              { echo "the checkout has no origin/main to check the tag against" >&2; exit 1; }
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main ||
+              { echo "the tag $GITHUB_REF_NAME names $GITHUB_SHA, which is not on main; tag the merge commit on main" >&2; exit 1; }
+          fi
+      # A tag push builds with crumbkit/board's tag of the same version. A
+      # manual run uses its board_ref input. A ref that is a version tag must
+      # exist in crumbkit/board and have a published release.
+      - id: board
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          INPUT_BOARD_REF: ${{ inputs.board_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            ref="v$VERSION"
+          else
+            ref=${INPUT_BOARD_REF:-origin/main}
+          fi
+          case "$ref" in
+            v[0-9]*)
+              gh api "repos/crumbkit/board/git/ref/tags/$ref" --silent 2>/dev/null ||
+                { echo "crumbkit/board has no tag $ref; publish Board $ref before releasing Board.app with it" >&2; exit 1; }
+              draft=$(gh release view "$ref" --repo crumbkit/board --json isDraft --jq .isDraft 2>/dev/null) ||
+                { echo "crumbkit/board has the tag $ref but no release for it; publish Board $ref before releasing Board.app with it" >&2; exit 1; }
+              [ "$draft" = false ] ||
+                { echo "crumbkit/board's release $ref is a draft; publish it before releasing Board.app with it" >&2; exit 1; }
+              echo "The app carries crumbkit/board $ref, which has a published release."
+              ;;
+            *) echo "The app carries crumbkit/board $ref." ;;
+          esac
+          echo "board_ref=$ref" >> "$GITHUB_OUTPUT"
+
+  # Without secrets: the Board release and both apps, unsigned.
+  unsigned:
+    if: github.event_name == 'pull_request'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    permissions:
+      contents: read # actions/checkout reads the repository.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crumbkit/board
+          path: .build/board-checkout
+          fetch-depth: 0
+          persist-credentials: false
+      - run: sudo xcode-select --switch "/Applications/Xcode_$(cat .xcode-version).app"
+      - run: brew install xcodegen
+      - run: npm install --global @anthropic-ai/claude-code@2.1.330
+      - run: bin/bundle
+        env:
+          BOARD_SRC: ${{ github.workspace }}/.build/board-checkout
+      - run: bin/build-apps
+
+  dmg:
+    if: github.event_name != 'pull_request'
+    needs: version
+    runs-on: xcode-27
+    timeout-minutes: 60
+    # The signing secrets live in this environment, whose deployment rule
+    # admits only main and `v*` tags.
+    environment: release
+    permissions:
+      contents: read # actions/checkout reads the repository.
+      id-token: write # The attestation is signed with the workflow's identity.
+      attestations: write # The attestation is stored with the repository.
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      BOARD_REF: ${{ needs.version.outputs.board_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: crumbkit/board
+          path: .build/board-checkout
+          fetch-depth: 0
+          persist-credentials: false
+      - run: sudo xcode-select --switch "/Applications/Xcode_$(cat .xcode-version).app"
+      - run: brew install xcodegen
+      - run: npm install --global @anthropic-ai/claude-code@2.1.330
+      # A keychain that lives only for this job holds the Developer ID
+      # identity and the notarytool profile. The API key file is deleted
+      # with the runner.
+      - name: Signing keychain
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          for name in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD ASC_API_KEY_P8_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID; do
+            [ -n "$(printenv "$name")" ] || { echo "the release environment's secret $name is not set; docs/release.md lists the secrets" >&2; exit 1; }
+          done
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          # security import takes the .p12 password only through -P, so it is in this
+          # process's argument list on a single-use runner. No step prints it.
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -s "$keychain"
+          key="$RUNNER_TEMP/AuthKey_$ASC_API_KEY_ID.p8"
+          printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$key"
+          xcrun notarytool store-credentials board-notary --key "$key" --key-id "$ASC_API_KEY_ID" \
+            --issuer "$ASC_API_ISSUER_ID" --keychain "$keychain"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+      # NOTARY_PROFILE is named, so bin/dmg stops instead of writing an
+      # image that is not notarised.
+      - run: bin/dmg "$BOARD_REF"
+        env:
+          BOARD_SRC: ${{ github.workspace }}/.build/board-checkout
+          NOTARY_PROFILE: board-notary
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      # A board built from a version tag prints that version.
+      - name: Bundled board version
+        run: |
+          board_version=$(.build/dmg/export/Board.app/Contents/Resources/board/bin/board --version)
+          echo "The app carries $board_version."
+          case "$BOARD_REF" in
+            v[0-9]*)
+              case "$board_version" in
+                "board ${BOARD_REF#v}" | "board ${BOARD_REF#v}+"*) ;;
+                *) echo "the app should carry board ${BOARD_REF#v} from crumbkit/board $BOARD_REF, and carries $board_version" >&2; exit 1 ;;
+              esac
+              ;;
+          esac
+      - run: |
+          mkdir dist
+          set -- .build/dmg/Board-"$VERSION"-*.dmg
+          [ "$#" -eq 1 ] && [ -f "$1" ] || { echo "bin/dmg wrote no single Board-$VERSION image" >&2; exit 1; }
+          case "$1" in *-unnotarised.dmg) echo "the image is not notarised" >&2; exit 1 ;; esac
+          cp "$1" "dist/Board-$VERSION.dmg"
+          xcrun stapler validate "dist/Board-$VERSION.dmg"
+          cd dist
+          shasum -a 256 -- *.dmg > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.dmg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: board-dmg
+          path: dist/*
+          if-no-files-found: error
+      - if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [version, dmg]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # gh release create attaches the image.
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: board-dmg
+          path: dist
+      - run: (cd dist && sha256sum --check SHA256SUMS)
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Board.app $VERSION" --notes "Board.app $VERSION for macOS on Apple silicon, signed with the Developer ID and notarised, with SHA256SUMS. Verify the image with gh attestation verify Board-$VERSION.dmg --repo $GITHUB_REPOSITORY." dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}

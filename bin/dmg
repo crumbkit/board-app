@@ -16,6 +16,10 @@
 # the hardened runtime, that the bundled board runs from the mounted image,
 # and that the installer in a copy of the app installs into a scratch home.
 # Any failed check stops it with an error.
+#
+# On a machine where Xcode is signed in to no account, such as a CI runner,
+# ASC_KEY_PATH, ASC_KEY_ID and ASC_ISSUER_ID name an App Store Connect API
+# key, and xcodebuild signs in with it to fetch the provisioning profile.
 set -eu
 cd "$(dirname "$0")/.."
 team=78HLU526FA
@@ -35,12 +39,21 @@ security find-identity -v -p codesigning | grep -q "\"Developer ID Application: 
 bin/bundle "$@"
 bin/project
 
+# Read after bin/bundle, which takes the ref in "$@".
+set --
+if [ -n "${ASC_KEY_PATH:-}" ]; then
+  [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] ||
+    fail "ASC_KEY_PATH is set, so ASC_KEY_ID and ASC_ISSUER_ID must be set too"
+  set -- -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" \
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+fi
+
 rm -rf -- "$out"
 mkdir -p "$out"
 echo "Archiving Board-macOS."
 xcodebuild -project Board.xcodeproj -scheme Board-macOS -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath "$out/derived" \
-  -archivePath "$out/Board.xcarchive" -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet archive ||
+  -archivePath "$out/Board.xcarchive" -allowProvisioningUpdates -allowProvisioningDeviceRegistration "$@" -quiet archive ||
   fail "the archive failed. If the error is \"No Account for Team $team\", sign in to Xcode with an Apple ID in that team, under Xcode > Settings > Accounts, and run bin/dmg again"
 
 cat >"$out/ExportOptions.plist" <<EOF
@@ -57,7 +70,7 @@ EOF
 echo "Exporting for Developer ID."
 xcodebuild -exportArchive -archivePath "$out/Board.xcarchive" \
   -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out/export" \
-  -allowProvisioningUpdates -quiet ||
+  -allowProvisioningUpdates "$@" -quiet ||
   fail "the export for Developer ID failed. If no Developer ID profile was found, check that team $team has a Developer ID Application certificate and that Xcode is signed in to it"
 app="$out/export/Board.app"
 [ -d "$app" ] || fail "the export wrote no Board.app"
@@ -117,10 +130,19 @@ if ! skipped=$(xcrun notarytool history --keychain-profile "$profile" 2>&1 >/dev
 else
   skipped=
   echo "Notarising with the keychain profile $profile."
-  xcrun notarytool submit "$unfinished" --keychain-profile "$profile" --wait >"$out/notary.log" ||
-    { cat "$out/notary.log" >&2; fail "notarytool submit failed"; }
-  cat "$out/notary.log"
+  # notarytool's output goes to the job log as it arrives, so the submission
+  # id is there even when the wait ends early. It holds no credential. A
+  # failure is recorded in a file, because tee's status hides notarytool's.
+  {
+    xcrun notarytool submit "$unfinished" --keychain-profile "$profile" --wait --timeout 45m ||
+      echo "$?" >"$out/notary.failed"
+  } | tee "$out/notary.log"
+  if [ -e "$out/notary.failed" ]; then
+    submission=$(awk '/^ *id:/ { print $2; exit }' "$out/notary.log")
+    fail "notarytool submit failed or waited longer than 45 minutes${submission:+; run: xcrun notarytool info $submission --keychain-profile $profile}"
+  fi
   submission=$(awk '/^ *id:/ { print $2; exit }' "$out/notary.log")
+  echo "Notarisation submission id: ${submission:-unknown}."
   grep -q 'status: Accepted' "$out/notary.log" ||
     fail "Apple did not accept submission $submission; run: xcrun notarytool log $submission --keychain-profile $profile"
   xcrun stapler staple "$unfinished" || fail "stapling the notarisation ticket to the image failed"
