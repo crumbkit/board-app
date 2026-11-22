@@ -77,7 +77,7 @@ struct InstallSheet: View {
     if model.makesPersonalBoard {
       VStack(alignment: .leading, spacing: 4) {
         HStack(alignment: .center, spacing: 10) {
-          Text("Board folder").fontWeight(.semibold)
+          Text("Board folder").fontWeight(.semibold).accessibilityHidden(true)
           HStack(spacing: 6) {
             Image(systemName: "folder").font(.system(size: 11)).frame(width: 14, height: 14)
             code(tilde(model.boardFolder)).lineLimit(1).truncationMode(.middle)
