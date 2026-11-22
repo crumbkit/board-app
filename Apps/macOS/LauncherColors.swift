@@ -1,39 +1,47 @@
-// The launcher's colours, by the names Board.app's palette uses. Each has a
-// light and a dark variant. The hex values are placeholders until the
-// shared palette lands; this file is the only place they appear.
+// The launcher's colours, by the names Board.app's palette uses. Each name
+// maps to a macOS semantic or system colour, so dark mode and Increase
+// Contrast come from the system. This file is the only place they appear.
 import AppKit
 import SwiftUI
 
 /// Named apart from SwiftUI's own `.background` and `.separator` styles.
 enum Palette {
-  /// The panel's ground.
-  static let background = named("Background", light: 0xF6F2E9, dark: 0x0B1620)
-  /// A raised surface: the selected row.
-  static let row = named("Row", light: 0xEAE3D3, dark: 0x183343)
-  static let text = named("Text", light: 0x183343, dark: 0xF6F2E9)
+  /// The panel's ground: the grouped background.
+  static let background = Color(nsColor: .windowBackgroundColor)
+  /// A raised surface: the selected row. In dark mode it is the grey macOS
+  /// gives a selected row in a list without focus, which is lighter than the
+  /// ground, so the selected row stands out.
+  static let row = byAppearance(
+    "Row", light: .controlBackgroundColor, dark: .unemphasizedSelectedContentBackgroundColor)
+  static let text = Color(nsColor: .labelColor)
   /// Muted labels.
-  static let secondaryText = named("SecondaryText", light: 0x4D6270, dark: 0xA9B6BF)
-  /// A fill only, never a text or icon colour: the selection marker and
-  /// the primary action.
-  static let accent = named("Accent", light: 0x7A5309, dark: 0xE5B653)
+  static let secondaryText = Color(nsColor: .secondaryLabelColor)
+  /// The selection marker, the primary action and links. It is the accent
+  /// colour chosen in System Settings, and it changes when that choice does.
+  static let accent = Color(nsColor: .controlAccentColor)
   /// Text and icons on Accent.
-  static let onAccent = named("OnAccent", light: 0xF6F2E9, dark: 0x0B1620)
+  static let onAccent = Color.white
   /// Failures.
-  static let alert = named("Alert", light: 0xA33D16, dark: 0xD9653B)
+  static let alert = Color(nsColor: .systemRed)
   /// Text and icons on Alert.
-  static let onAlert = named("OnAlert", light: 0xF6F2E9, dark: 0x0B1620)
-  /// Passed and good states.
-  static let verified = named("Verified", light: 0x3F6E2E, dark: 0xB8CA9A)
-  /// Deleted or removed things.
-  static let removed = named("Removed", light: 0x6E7F8A, dark: 0x8E9BA4)
+  static let onAlert = Color.white
+  /// Passed and good states. The status badge draws its word and icon in
+  /// this colour. System green is too light to read on a light ground, so
+  /// light mode uses a darker green and dark mode keeps system green.
+  static let verified = byAppearance("Verified", light: NSColor(rgb: 0x1D7A34), dark: .systemGreen)
+  /// Deleted or removed things. The status badge draws its word and icon in
+  /// this colour, so light mode uses a darker orange for the same reason and
+  /// dark mode keeps system orange.
+  static let removed = byAppearance("Removed", light: NSColor(rgb: 0xB25000), dark: .systemOrange)
   /// Rules between areas.
-  static let separator = named("Separator", light: 0xD9D1C0, dark: 0x2B4152)
+  static let separator = Color(nsColor: .separatorColor)
 
-  private static func named(_ name: String, light: UInt32, dark: UInt32) -> Color {
+  /// A colour that is `light` in light mode and `dark` in dark mode.
+  private static func byAppearance(_ name: String, light: NSColor, dark: NSColor) -> Color {
     Color(
       nsColor: NSColor(name: NSColor.Name(name)) { appearance in
         let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return NSColor(rgb: isDark ? dark : light)
+        return isDark ? dark : light
       })
   }
 }
