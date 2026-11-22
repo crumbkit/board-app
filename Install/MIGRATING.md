@@ -17,7 +17,7 @@ migration byte for byte.
 - Install the new `board` binary and its skills with Board.app, or with
   `install` as `INSTALL.md` says.
 - In Claude Code, replace the `board-controls@board` mod with
-  `board-rules@board`. Board.app does this, and so does `install --hooks`.
+  `board-rules@board`. `install --hooks` does this; Board.app does not.
 - If you set `BOARD_CONTROLS_AGENT`, rename it to `BOARD_RULES_AGENT`. The
   cache of judged rules moves to `board-rules/judged` and starts empty, so the
   first rules check after the switch judges every rule again.
