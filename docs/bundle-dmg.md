@@ -18,7 +18,8 @@ with it `board`, on another Mac. The ref goes to `bin/bundle`.
 5. Puts the app and an `/Applications` link in a compressed image, and signs
    the image.
 6. Notarises the image and staples the ticket to it, when the notarytool
-   keychain profile works.
+   keychain profile works. It prints the submission id as notarytool
+   reports it, and stops when Apple has not answered within 45 minutes.
 7. Mounts the image and checks it: the app passes `codesign --verify --deep
    --strict` and `bin/board --version` runs. When notarised, `spctl` accepts
    the image and the app.
