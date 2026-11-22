@@ -90,6 +90,10 @@ that stopped leaves `current` where it was, so Board.app offers it again.
 - `git has no name or email`: nothing was changed. Run the two
   `git config --global` commands it names, or pass `--git-name` and
   `--git-email`.
+- `set only through a conditional include`: git's name or email comes only
+  from an `[includeIf]` section, which a value written now would override.
+  Nothing was changed. Set `user.name` and `user.email` in the global git
+  config outside the conditional include.
 - `<email> is not an email address`, or `git does not run`: nothing was
   changed. Fix it as the message says.
 - `<path> ships no skills`, or `refused skills list --plugins`: the release

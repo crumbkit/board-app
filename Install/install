@@ -222,6 +222,13 @@ if [ -z "$personal" ]; then
   # overridden.
   have_name=$(git config --global --includes --get user.name || true)
   have_email=$(git config --global --includes --get user.email || true)
+  # A value set only under [includeIf] reads as unset here, outside any
+  # repository, and a [user] section written now would override it wherever
+  # the include applies, so the installer writes nothing and refuses.
+  if { [ -z "$have_name" ] || [ -z "$have_email" ]; } \
+    && git config --global --get-regexp '^includeif\..*\.path$' >/dev/null 2>&1; then
+    refuse "" "Your git name or email is set only through a conditional include, an [includeIf] section of your global git config, so a name Board set there would override it in every repository the include covers. Set user.name and user.email in your global git config outside the conditional include, then try again."
+  fi
   if [ -z "$have_name" ] && [ -n "$git_name" ]; then set_name=$git_name; fi
   if [ -z "$have_email" ] && [ -n "$git_email" ]; then set_email=$git_email; fi
   if [ -z "$have_name$set_name" ] || [ -z "$have_email$set_email" ]; then

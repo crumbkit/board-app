@@ -209,6 +209,14 @@ bare included-given
 GIT_CONFIG_GLOBAL="$scratch/include-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "other@example.com" >"$HOME/out" 2>"$HOME/err"
 check "and the given name and email do not write a [user] section over it" "[ \$? -eq 0 ] && cmp -s '$scratch/include-gitconfig' '$scratch/include-gitconfig.before' && [ \"\$(git -C '$HOME/Board' log -1 --format='%an <%ae>')\" = 'Included Name <included@example.com>' ]"
 
+bare include-if
+printf '[includeIf "gitdir:%s/work/"]\n\tpath = %s\n' "$HOME" "$scratch/included-gitconfig" >"$scratch/includeif-gitconfig"
+cp "$scratch/includeif-gitconfig" "$scratch/includeif-gitconfig.before"
+GIT_CONFIG_GLOBAL="$scratch/includeif-gitconfig" "$bundle/install" >"$HOME/out" 2>"$HOME/err"
+check "an identity set only through a conditional include stops it at step 1 and names the include" "[ \$? -ne 0 ] && grep -q '^::refusal .*conditional include' '$HOME/out' && ! grep -q '^::step 2' '$HOME/out'"
+GIT_CONFIG_GLOBAL="$scratch/includeif-gitconfig" "$bundle/install" --git-name "Other Name" --git-email "other@example.com" >"$HOME/out" 2>"$HOME/err"
+check "and with a name and email given it still refuses and writes nothing" "[ \$? -ne 0 ] && grep -q '^::refusal .*conditional include' '$HOME/out' && cmp -s '$scratch/includeif-gitconfig' '$scratch/includeif-gitconfig.before' && [ ! -e '$share' ] && [ ! -e '$HOME/Board' ]"
+
 echo "Claude Code mods without --hooks:"
 home mods
 printf 'board\n' >"$HOME/marketplaces.txt"

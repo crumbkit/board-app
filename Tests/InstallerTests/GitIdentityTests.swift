@@ -52,6 +52,25 @@ private struct GlobalConfig: ~Copyable {
   #expect(identity == GitIdentity(name: "Ana Silva", email: "ana@example.com"))
 }
 
+@Test func an_identity_set_only_through_a_conditional_include_is_reported() async throws {
+  let included = try GlobalConfig("[user]\n\tname = Ana Silva\n\temail = ana@example.com\n")
+  let config = try GlobalConfig(
+    "[includeIf \"gitdir:~/work/\"]\n\tpath = \(included.url.path)\n")
+  let identity = await GitIdentity.read(git: config.git)
+  #expect(identity == GitIdentity(name: nil, email: nil, conditional: true))
+  #expect(!identity.complete)
+  #expect(identity.problem == GitIdentity.conditionalProblem)
+}
+
+@Test func a_conditional_include_beside_a_set_identity_changes_nothing() async throws {
+  let config = try GlobalConfig(
+    "[user]\n\tname = Ana Silva\n\temail = ana@example.com\n[includeIf \"gitdir:~/work/\"]\n\tpath = /nowhere\n"
+  )
+  let identity = await GitIdentity.read(git: config.git)
+  #expect(identity == GitIdentity(name: "Ana Silva", email: "ana@example.com"))
+  #expect(identity.problem == nil)
+}
+
 @Test func an_unset_or_blank_value_reads_as_nil() async throws {
   let config = try GlobalConfig("[user]\n\tname = \"  \"\n")
   let identity = await GitIdentity.read(git: config.git)
@@ -61,4 +80,12 @@ private struct GlobalConfig: ~Copyable {
 @Test func a_git_that_does_not_run_reads_as_no_identity() async {
   let identity = await GitIdentity.read(git: ["/nonexistent/git"])
   #expect(identity == GitIdentity(name: nil, email: nil))
+}
+
+@Test func the_installer_prints_the_same_conditional_refusal_as_the_sheet() throws {
+  let installer = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("Install/install")
+  let script = try String(contentsOf: installer, encoding: .utf8)
+  #expect(script.contains("refuse \"\" \"\(GitIdentity.conditionalProblem)\""))
 }

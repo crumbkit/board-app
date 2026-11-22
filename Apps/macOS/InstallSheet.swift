@@ -116,26 +116,31 @@ struct InstallSheet: View {
         )
         .font(.caption).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
-          GridRow {
-            Text("Name").gridColumnAlignment(.trailing)
-            TextField("Name", text: $model.gitName).labelsHidden()
-              .disabled(model.identity?.name != nil)
-          }
-          GridRow {
-            Text("Email")
-            TextField("Email", text: $model.gitEmail).labelsHidden()
-              .disabled(model.identity?.email != nil)
-          }
-          if model.emailRefused {
+        if let problem = model.identity?.problem {
+          Text(problem).font(.caption).foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+          Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
             GridRow {
-              Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-              Text("Enter an email address, such as ana@example.com.")
-                .font(.caption).foregroundStyle(.red)
+              Text("Name").gridColumnAlignment(.trailing)
+              TextField("Name", text: $model.gitName).labelsHidden()
+                .disabled(model.identity?.name != nil)
+            }
+            GridRow {
+              Text("Email")
+              TextField("Email", text: $model.gitEmail).labelsHidden()
+                .disabled(model.identity?.email != nil)
+            }
+            if model.emailRefused {
+              GridRow {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                Text("Enter an email address, such as ana@example.com.")
+                  .font(.caption).foregroundStyle(.red)
+              }
             }
           }
+          .font(.callout)
         }
-        .font(.callout)
       }
       .padding(.vertical, 10).padding(.horizontal, 12)
       .frame(maxWidth: .infinity, alignment: .leading)

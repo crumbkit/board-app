@@ -80,7 +80,7 @@ final class InstallModel {
   /// a name and an email.
   var canInstall: Bool {
     guard makesPersonalBoard else { return true }
-    guard folderCheck.passes, let identity else { return false }
+    guard folderCheck.passes, let identity, identity.problem == nil else { return false }
     let name = identity.name ?? gitName.trimmingCharacters(in: .whitespaces)
     let email = identity.email ?? gitEmail
     return !name.isEmpty && GitIdentity.isEmail(email)

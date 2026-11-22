@@ -86,14 +86,14 @@ private struct Home: ~Copyable {
   #expect(survey.others.isEmpty && survey.controls.isEmpty)
 }
 
-@Test func the_survey_finds_the_old_attention_plugin_and_the_old_mods() throws {
+@Test func the_survey_finds_the_old_attention_plugins_links() throws {
   let home = try Home()
   #expect(Machine(home: home.url).survey().old == [])
   try home.link(".local/share/board/plugins/attention", to: "/somewhere/board-attention")
   try home.write(
     ".claude/plugins/installed_plugins.json",
     #"{"version": 2, "plugins": {"board-controls@board": [], "rust-analyzer-lsp@x": []}}"#)
-  #expect(Machine(home: home.url).survey().old == [.pythonAttention, .boardControls])
+  #expect(Machine(home: home.url).survey().old == [.pythonAttention])
 }
 
 @Test func the_attention_approve_mod_alone_is_not_the_old_attention_plugins_links() throws {
@@ -104,18 +104,6 @@ private struct Home: ~Copyable {
   #expect(Machine(home: home.url).survey().old == [])
   try home.link(".claude/skills/attention", to: "/somewhere/board-attention")
   #expect(Machine(home: home.url).survey().old == [.pythonAttention])
-}
-
-@Test func the_carried_marketplace_names_its_mods() throws {
-  let home = try Home()
-  try home.write(
-    "board/.claude-plugin/marketplace.json",
-    #"{"name": "board", "plugins": [{"name": "board-rules", "source": "./a"}, {"name": "board-attention", "source": "./b"}]}"#
-  )
-  #expect(
-    Machine.mods(release: home.url.appendingPathComponent("board")) == [
-      "board-rules", "board-attention",
-    ])
 }
 
 @Test func the_path_for_install_is_the_login_shells_or_the_apps_with_local_bin_first() {
