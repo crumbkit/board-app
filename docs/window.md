@@ -58,9 +58,9 @@ sheet. It waits while the pairing sheet is open.
   crumbkit/board commits and dates, what the update replaces, updates and
   enables, that installed Claude Code mods are updated and keep their on or
   off state, and the boards that still name `controls`, with Open Migration
-  Guide. A Removes row for the Python attention plugin's links shows when
-  one of those links exists.
-  With no personal board it shows the folder and the identity section too.
+  Guide. A Removes row shows when one of the Python attention plugin's
+  links exists. With no personal board it shows the folder picker below
+  the box, and the identity section.
 - Install or Update gets the PATH from the person's login shell (`$SHELL
   -l -c`, five seconds at most), then runs `install` through the one
   runner, with `--board-folder` when there is no personal board and only

@@ -48,12 +48,9 @@ struct InstallSheet: View {
         item("doc.text", "Skills", Text("Board's skills, written to \(code("~/.claude/skills"))"))
         Divider()
         item("puzzlepiece.extension", "Plugins", plugins)
-        if model.makesPersonalBoard {
-          Divider()
-          folderRow
-        }
       }
       .modifier(Box())
+      folderPicker
       identitySection
       footer(meta: true) {
         Button("Not Now", action: model.notNow).keyboardShortcut(.cancelAction)
@@ -73,24 +70,34 @@ struct InstallSheet: View {
     return Text("Enabled in your personal board, \(code(tilde(personal)))")
   }
 
-  /// The folder a new personal board goes in, with Choose… and the reason
-  /// the installer would refuse it.
-  private var folderRow: some View {
-    HStack(alignment: .center, spacing: 12) {
-      Image(systemName: "folder").frame(width: 18)
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Board folder").fontWeight(.semibold)
-        code(tilde(model.boardFolder)).foregroundStyle(.secondary)
+  /// The folder a new personal board goes in, below the box on its own: a
+  /// label, a path field, Choose… and the reason the installer would refuse
+  /// the folder. It shows only when Board's config names no personal board.
+  @ViewBuilder private var folderPicker: some View {
+    if model.makesPersonalBoard {
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: 10) {
+          Text("Board folder").fontWeight(.semibold)
+          HStack(spacing: 6) {
+            Image(systemName: "folder").font(.system(size: 11)).frame(width: 14, height: 14)
+            code(tilde(model.boardFolder)).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 0)
+          }
+          .padding(.vertical, 2).padding(.horizontal, 7)
+          .frame(minHeight: 21)
+          .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 5))
+          .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Board folder")
+          .accessibilityValue(tilde(model.boardFolder))
+          Button("Choose…", action: chooseFolder).controlSize(.small)
+        }
         if case .refused(let reason) = model.folderCheck {
           Text(homeAsTilde(reason)).font(.caption).foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      Spacer(minLength: 0)
-      Button("Choose…", action: chooseFolder).controlSize(.small)
     }
-    .padding(.vertical, 10)
-    .padding(.horizontal, 12)
   }
 
   /// A folder picker that can create a folder, starting at the folder chosen now.
@@ -168,16 +175,13 @@ struct InstallSheet: View {
         change("Updates", Text("Board's skills"))
         Divider()
         change("Enables", enables)
-        if model.makesPersonalBoard {
-          Divider()
-          folderRow
-        }
         if model.survey.old.contains(.pythonAttention) {
           Divider()
           change("Removes", Text("the old Python attention plugin's links"), muted: true)
         }
       }
       .modifier(Box())
+      folderPicker
       Text(
         "The Claude Code mods you have installed are updated and keep their on or off state. No new mods are added."
       )
