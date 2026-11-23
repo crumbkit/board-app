@@ -11,8 +11,8 @@
 # the crumbkit/board ref its board_ref input names, and releases nothing.
 # A pull request that changes this file or the scripts it runs builds the
 # Board release and both apps unsigned, which needs no secrets. The signing
-# job reads its secrets from the `release` environment, which docs/release.md
-# describes.
+# job reads its secrets from the `release` environment, which
+# docs/release-secrets.md describes.
 name: release
 
 on:
@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       board_ref:
-        description: The crumbkit/board ref whose Board release the app carries, such as v0.1.0.
+        description: The crumbkit/board ref whose Board release the app carries, such as v0.1.1.
         type: string
         default: origin/main
 
@@ -158,7 +158,7 @@ jobs:
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
           for name in DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD ASC_API_KEY_P8_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID; do
-            [ -n "$(printenv "$name")" ] || { echo "the release environment's secret $name is not set; docs/release.md lists the secrets" >&2; exit 1; }
+            [ -n "$(printenv "$name")" ] || { echo "the release environment's secret $name is not set; docs/release-secrets.md lists the secrets" >&2; exit 1; }
           done
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password=$(openssl rand -hex 24)
