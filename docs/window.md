@@ -78,9 +78,15 @@ sheet. It waits while the pairing sheet is open.
   started. `current` moves only at the end, so the sheet shows again on the
   next launch.
 
+## Letting this Mac sign
+
+After Install, and from the menu bar's Let This Mac Sign…, the sheet adds
+this Mac's line to Board's allowed signers file
+([signing step](signing-step.md)).
+
 ## Phone names
 
 At pairing the Mac keeps the name the phone gave and the time, in its own
 defaults. They are shown and never trusted: what a phone may sign comes
-from the two files alone. A phone paired before the Mac kept names shows as
+from the allowed signers file alone. A phone paired before the Mac kept names shows as
 "iPhone" and the first 8 characters of its id until it pairs again.

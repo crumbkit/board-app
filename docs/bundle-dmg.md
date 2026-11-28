@@ -9,7 +9,7 @@ with it `board`, on another Mac. The ref goes to `bin/bundle`.
 2. Archives Board-macOS and exports it for Developer ID. Xcode fetches the
    provisioning profile the iCloud entitlements need.
 3. Signs every Mach-O file in `Contents/Resources/board`, which today are
-   `bin/board` and `bin/attention-sign`, with the Developer ID certificate
+   `bin/board` and `bin/board-sign`, with the Developer ID certificate
    the export used, the hardened runtime and a timestamp, then signs the
    app again with its exported entitlements.
 4. Checks the exported app: it passes `codesign --verify --deep --strict`,
@@ -66,7 +66,7 @@ agent can run the installer instead, as
 - Only the image carries a stapled ticket. The app dragged out of it does
   not, so its first launch needs Gatekeeper's online check of the ticket.
 - When the image is not notarised, a Mac that downloaded it blocks the app,
-  and also the `board` and `attention-sign` the installer copies into
+  and also the `board` and `board-sign` the installer copies into
   `~/.local/bin`, until the owner allows each in System Settings > Privacy &
   Security.
 - Nothing checks for a newer image. A version tag publishes one, as

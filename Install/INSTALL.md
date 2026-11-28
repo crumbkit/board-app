@@ -12,15 +12,16 @@ install it by hand, or to replace an older one, run `install` from here:
 ## What it changes
 
 1. Checks this Mac, and stops before it changes anything when a check fails.
-   `docs/bundle-install.md` in board-app lists the checks. When
+   `docs/bundle-install.md` in crumbkit/board-app lists the checks. When
    `~/.config/board/config.json` names no personal board, it also checks that
    `git` runs, that the board folder is missing, empty, an empty git
    repository or an existing board, and that git has a name and an email for
    commits. It then sets a name or email git lacks with `git config --global`
    from `--git-name` and `--git-email`. It never changes a value already set.
 2. Copies the release to `~/.local/share/board/releases/<id>` once.
-3. Installs `board` and `attention-sign` in `~/.local/bin`, keeping each
-   replaced binary as `~/.local/share/board/<name>.prev`. Every Board plugin
+3. Installs `board` and `board-sign` in `~/.local/bin`, keeping each
+   replaced binary as `~/.local/share/board/<name>.prev`. An `attention-sign`
+   already there stays installed. Every Board plugin
    is built into `board`, so it removes the plugin links an older release
    made in `~/.local/share/board/plugins`, and the links of the Python
    attention plugin from stemmacorp/board-attention. It leaves every other
@@ -61,6 +62,10 @@ settings, so ask the owner before you run it. Board.app never passes it.
 
 Last, it moves `~/.local/share/board/current` to the new release. An install
 that stopped leaves `current` where it was, so Board.app offers it again.
+
+The installer does not add this Mac's key to `~/.config/board/allowed_signers`.
+Board.app's sheet does that after Install, with Touch ID; `SIGNING.md` beside
+this file says how, and gives the commands for a Mac without the app.
 
 ## Arguments
 

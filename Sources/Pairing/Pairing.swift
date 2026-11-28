@@ -1,5 +1,5 @@
 // What pairing a phone with a Mac decides: the code both screens show, and the
-// line each allowed signers file gains for the phone's key.
+// line Board's allowed signers file gains for the phone's key.
 import CryptoKit
 import Foundation
 import SSHSig
@@ -155,37 +155,75 @@ public struct Reveal: Sendable {
   }
 }
 
-/// A paired device's lines, built by `SSHSig`'s `AllowedSigners` from the
+/// A paired device's line, built by `SSHSig`'s `AllowedSigners` from the
 /// device's key and label and the scope the owner chose.
 extension AllowedSigners {
-  /// The device's line for Board's file, or nil when it may sign nothing there.
+  /// The device's one line for Board's file, naming the approval namespace,
+  /// the order namespace or both, or nil when it may sign nothing.
   public static func boardLine(_ device: Device, scope: Scope) -> String? {
-    deviceBoardLine(x963: device.x963, label: device.label, approves: scope.contains(.approvals))
-  }
-
-  /// The device's line for attention's file, or nil when it may not sign orders.
-  public static func attentionLine(_ device: Device, scope: Scope) -> String? {
-    deviceAttentionLine(
-      x963: device.x963, label: device.label, signsOrders: scope.contains(.orders))
+    deviceBoardLine(
+      x963: device.x963, label: device.label, approves: scope.contains(.approvals),
+      signsOrders: scope.contains(.orders))
   }
 }
 
 /// One allowed signers file on disk, held to the rules Board applies to it.
 public enum AllowedSignersFile {
+  /// A file Board would not trust, with its path, its permission bits and
+  /// its owner: "you" for the user, or the owner's account name.
   public enum Refusal: LocalizedError, Equatable {
     /// Board refuses a file that group or others may write.
-    case writableByOthers(String)
+    case writableByOthers(path: String, mode: Int, owner: String)
     /// Board refuses a file that neither the user nor root owns.
-    case ownedByAnother(String)
+    case ownedByAnother(path: String, mode: Int, owner: String)
 
-    public var errorDescription: String? {
+    public var path: String {
       switch self {
-      case .writableByOthers(let path):
-        "\(path) may be written by other users, so Board would not trust it. Run chmod go-w on it."
-      case .ownedByAnother(let path):
-        "\(path) is owned by another user, so Board would not trust it."
+      case .writableByOthers(let path, _, _), .ownedByAnother(let path, _, _): path
       }
     }
+
+    /// The refusal, which asks the owner to read the file's lines before
+    /// fixing its permissions, since another program may have added a line.
+    public var errorDescription: String? {
+      let read = "Read its lines first: each line should be a key you added."
+      switch self {
+      case .writableByOthers(let path, let mode, let owner):
+        return
+          "\(path) has mode \(octal(mode)), owned by \(owner), so other users can write to it and Board will not trust it. \(read) Then run chmod 644 \(path)."
+      case .ownedByAnother(let path, let mode, let owner):
+        return
+          "\(path) has mode \(octal(mode)), owned by \(owner), so another user can write to it and Board will not trust it. \(read) Then make it yours with sudo chown $USER \(path) and run chmod 644 \(path)."
+      }
+    }
+
+    /// One line under the refusal, such as "mode 666 · owned by you · needs
+    /// 644 or stricter".
+    public var summary: String {
+      switch self {
+      case .writableByOthers(_, let mode, let owner):
+        "mode \(octal(mode)) · owned by \(owner) · needs 644 or stricter"
+      case .ownedByAnother(_, let mode, let owner):
+        "mode \(octal(mode)) · owned by \(owner) · needs to be yours, 644 or stricter"
+      }
+    }
+
+    private func octal(_ mode: Int) -> String { String(mode & 0o7777, radix: 8) }
+  }
+
+  /// Why Board would not trust a file with this mode and owner, or nil when
+  /// it would. `user` is the account Board runs as; root may own the file.
+  public static func refusal(
+    path: String, mode: Int, ownerID: uid_t, ownerName: String?, user: uid_t
+  ) -> Refusal? {
+    let owner = ownerID == user ? "you" : ownerName ?? "user \(ownerID)"
+    guard ownerID == user || ownerID == 0 else {
+      return .ownedByAnother(path: path, mode: mode, owner: owner)
+    }
+    guard mode & 0o022 == 0 else {
+      return .writableByOthers(path: path, mode: mode, owner: owner)
+    }
+    return nil
   }
 
   /// A removal that left the device's line in some files.
@@ -242,6 +280,20 @@ public enum AllowedSignersFile {
     try rewrite(file) { PairedDevice.replacing(id, in: $0, with: line) }
   }
 
+  /// Writes this Mac's own `line` to `file`: it replaces every line that
+  /// holds `key`, where the first of them stood, or ends the file, and keeps
+  /// every other line byte for byte. It returns the other lines it kept. A
+  /// file Board would not trust is refused before anything is written.
+  @discardableResult
+  public static func setOwn(_ file: URL, key x963: Data, line: String) throws -> MacLine.Kept {
+    var kept = MacLine.Kept(phones: 0, others: 0)
+    try rewrite(file) { text in
+      kept = MacLine.kept(in: text, key: x963)
+      return MacLine.setting(line, key: x963, in: text)
+    }
+    return kept
+  }
+
   /// Writes `change` of the file's text. A symlink is followed and kept. A
   /// missing file is made with mode 644; an existing one keeps its mode. The
   /// new text goes to a file beside it with that mode first, then replaces
@@ -264,9 +316,15 @@ public enum AllowedSignersFile {
         throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: target.path])
       }
       mode = read
-      let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value
-      guard owner == getuid() || owner == 0 else { throw Refusal.ownedByAnother(target.path) }
-      guard mode & 0o022 == 0 else { throw Refusal.writableByOthers(target.path) }
+      guard let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value else {
+        throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: target.path])
+      }
+      if let refusal = refusal(
+        path: target.path, mode: mode, ownerID: owner,
+        ownerName: attributes[.ownerAccountName] as? String, user: getuid())
+      {
+        throw refusal
+      }
       existing = try String(contentsOf: target, encoding: .utf8)
     }
     let text = change(existing)

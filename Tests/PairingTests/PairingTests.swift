@@ -86,18 +86,19 @@ struct AllowedSignersTests {
     #expect(text == "owner MAC\nowner NEW \(phone.label)\n")
   }
 
-  @Test func a_phone_with_no_board_scope_gets_no_board_line_and_one_with_orders_gets_one() {
+  @Test func a_phone_with_no_scope_gets_no_line_and_one_with_orders_alone_gets_one() {
     let phone = device()
-    #expect(AllowedSigners.boardLine(phone, scope: [.orders]) == nil)
-    #expect(AllowedSigners.attentionLine(phone, scope: [.orders]) != nil)
-    #expect(AllowedSigners.attentionLine(phone, scope: [.approvals]) == nil)
+    #expect(AllowedSigners.boardLine(phone, scope: []) == nil)
+    #expect(
+      AllowedSigners.boardLine(phone, scope: [.orders])!.hasPrefix(
+        "owner namespaces=\"attention/order/v1\" ecdsa-sha2-nistp256 "))
   }
 
-  @Test func the_board_line_names_only_the_approval_namespace_whatever_the_scope() {
+  @Test func the_line_names_approvals_and_orders_and_never_the_owners_write() {
     let phone = device()
     #expect(
       AllowedSigners.boardLine(phone, scope: Scope(rawValue: ~0))!.hasPrefix(
-        "owner namespaces=\"board/approve/v1\" ecdsa-sha2-nistp256 "))
+        "owner namespaces=\"board/approve/v1,attention/order/v1\" ecdsa-sha2-nistp256 "))
   }
 
   @Test func ssh_keygen_admits_a_paired_phone_approval() throws {
@@ -114,8 +115,9 @@ struct AllowedSignersTests {
 
   @Test func ssh_keygen_admits_an_order_signed_by_a_phone_granted_orders() throws {
     let (phone, key) = signingDevice()
-    let line = AllowedSigners.attentionLine(phone, scope: [.orders])!
+    let line = AllowedSigners.boardLine(phone, scope: [.orders])!
     #expect(try verify(key, line: line, namespace: orderNamespace) == 0)
+    #expect(try verify(key, line: line, namespace: "board/approve/v1") != 0)
   }
 
   private func verify(_ key: P256.Signing.PrivateKey, line: String, namespace: String) throws
@@ -315,9 +317,13 @@ struct AllowedSignersFileTests {
     let phone = device()
     let file = try temporary("allowed_signers", mac)
     try FileManager.default.setAttributes([.posixPermissions: 0o664], ofItemAtPath: file.path)
-    #expect(throws: AllowedSignersFile.Refusal.writableByOthers(file.path)) {
+    #expect(
+      throws: AllowedSignersFile.Refusal.writableByOthers(
+        path: file.path, mode: 0o664, owner: "you")
+    ) {
       try AllowedSignersFile.update(file, device: phone.id, line: "owner NEW \(phone.label)")
     }
+    #expect(try String(contentsOf: file, encoding: .utf8) == mac)
   }
 
   @Test func a_file_only_its_owner_may_write_is_admitted() throws {
@@ -356,7 +362,10 @@ struct AllowedSignersFileTests {
     try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: target.path)
     let link = try directory().appendingPathComponent("allowed_signers")
     try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
-    #expect(throws: AllowedSignersFile.Refusal.writableByOthers(target.path)) {
+    #expect(
+      throws: AllowedSignersFile.Refusal.writableByOthers(
+        path: target.path, mode: 0o666, owner: "you")
+    ) {
       try AllowedSignersFile.update(link, device: phone.id, line: "owner NEW \(phone.label)")
     }
   }
@@ -384,37 +393,33 @@ private func directory() throws -> URL {
 struct PairedDeviceTests {
   let mac = "owner ecdsa-sha2-nistp256 AAAAmac attention\n"
 
-  @Test func a_phone_paired_with_both_scopes_lists_once_with_both() {
+  @Test func a_phone_paired_with_both_scopes_lists_once_with_both_from_its_one_line() {
     let phone = device()
     let board = mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n"
-    let attention = mac + AllowedSigners.attentionLine(phone, scope: .suggested)! + "\n"
-    let listed = PairedDevice.list(board: board, attention: attention)
+    let listed = PairedDevice.list(board: board)
     #expect(listed.map(\.id) == [phone.id])
     #expect(listed.first?.scope == .suggested)
     #expect(listed.first?.x963 == phone.x963)
     #expect(listed.first?.fingerprint == phone.fingerprint)
-    #expect(listed.first?.boardLine == AllowedSigners.boardLine(phone, scope: .suggested))
-    #expect(listed.first?.attentionLine == AllowedSigners.attentionLine(phone, scope: .suggested))
+    #expect(listed.first?.line == AllowedSigners.boardLine(phone, scope: .suggested))
   }
 
-  @Test func a_phone_with_a_line_in_attentions_file_alone_may_sign_orders_only() {
+  @Test func a_phone_whose_line_names_orders_alone_may_sign_orders_only() {
     let phone = device()
-    let attention = AllowedSigners.attentionLine(phone, scope: [.orders])! + "\n"
-    let listed = PairedDevice.list(board: mac, attention: attention)
-    #expect(listed.first?.scope == [.orders])
-    #expect(listed.first?.boardLine == nil)
+    let board = mac + AllowedSigners.boardLine(phone, scope: [.orders])! + "\n"
+    #expect(PairedDevice.list(board: board).first?.scope == [.orders])
   }
 
   @Test func a_line_whose_namespaces_do_not_name_the_scope_grants_nothing() {
     let phone = device()
     let line = openSSHPublicKey(x963: phone.x963, comment: phone.label)
-    let listed = PairedDevice.list(board: "owner namespaces=\"git\" \(line)\n", attention: "")
+    let listed = PairedDevice.list(board: "owner namespaces=\"git\" \(line)\n")
     #expect(listed.first?.scope == [])
   }
 
   @Test func the_mac_line_and_labels_that_are_not_uuids_are_not_devices() {
     let text = mac + "owner ecdsa-sha2-nistp256 AAAA board-app/device/not-a-uuid\n"
-    #expect(PairedDevice.list(board: text, attention: text).isEmpty)
+    #expect(PairedDevice.list(board: text).isEmpty)
   }
 
   @Test func a_line_with_a_trailing_space_is_listed_and_removed() {
@@ -422,7 +427,7 @@ struct PairedDeviceTests {
     let board =
       mac + AllowedSigners.boardLine(phone, scope: .suggested)! + "\n"
       + "owner AAAA \(phone.label) \n"
-    let listed = PairedDevice.list(board: board, attention: "")
+    let listed = PairedDevice.list(board: board)
     #expect(listed.count == 1)
     #expect(PairedDevice.removing(phone.id, keyedIn: [board], from: board) == mac)
   }
@@ -437,7 +442,7 @@ struct PairedDeviceTests {
       line + " trailing words",
     ] {
       let text = mac + variant + "\n"
-      #expect(PairedDevice.list(board: text, attention: "").map(\.id) == [phone.id], "\(variant)")
+      #expect(PairedDevice.list(board: text).map(\.id) == [phone.id], "\(variant)")
       #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == mac, "\(variant)")
     }
     // A copy of the key goes too, found by the key wherever it sits.
@@ -464,27 +469,27 @@ struct PairedDeviceTests {
     }
     // The label in lower case names the same phone.
     let lower = mac + line.replacingOccurrences(of: phone.id, with: phone.id.lowercased()) + "\n"
-    #expect(PairedDevice.list(board: lower, attention: "").map(\.id) == [phone.id])
+    #expect(PairedDevice.list(board: lower).map(\.id) == [phone.id])
     #expect(PairedDevice.removing(phone.id, keyedIn: [lower], from: lower) == mac)
   }
 
   @Test func a_comment_naming_a_phone_is_neither_listed_nor_removed() {
     let phone = device()
     let text = mac + "# owner AAAA \(phone.label)\n"
-    #expect(PairedDevice.list(board: text, attention: "").isEmpty)
+    #expect(PairedDevice.list(board: text).isEmpty)
     #expect(PairedDevice.removing(phone.id, keyedIn: [text], from: text) == text)
   }
 
   @Test func a_key_that_does_not_read_leaves_no_fingerprint() {
     let id = UUID().uuidString
     let listed = PairedDevice.list(
-      board: "owner ecdsa-sha2-nistp256 AAAA board-app/device/\(id)\n", attention: "")
+      board: "owner ecdsa-sha2-nistp256 AAAA board-app/device/\(id)\n")
     #expect(listed.first?.fingerprint == nil)
   }
 
   @Test func a_device_without_a_stored_name_is_named_by_its_id() {
     let listed = PairedDevice.list(
-      board: "owner AAAA board-app/device/32939622-2420-45C9-B0B9-060CB36DDED6\n", attention: "")
+      board: "owner AAAA board-app/device/32939622-2420-45C9-B0B9-060CB36DDED6\n")
     #expect(listed.first?.fallbackName == "iPhone 32939622")
   }
 
@@ -572,5 +577,186 @@ struct RemovalByKeyTests {
     let board = try temporary("board", mac + "owner OLD \(phone.label)\r\n")
     try AllowedSignersFile.update(board, device: phone.id, line: "owner NEW \(phone.label)")
     #expect(try String(contentsOf: board, encoding: .utf8) == mac + "owner NEW \(phone.label)\n")
+  }
+}
+
+/// This Mac's own line in Board's file, which the install sheet writes.
+struct OwnLineTests {
+  let phone = device()
+  let macKey = key().x963Representation
+  var line: String { AllowedSigners.macLine(x963: macKey, comment: "board") }
+  var phoneLine: String { AllowedSigners.boardLine(phone, scope: .suggested)! }
+  let otherMac = "owner " + openSSHPublicKey(x963: key().x963Representation, comment: "other")
+
+  @Test func a_missing_file_is_made_with_the_line_and_mode_644() throws {
+    let file = try directory().appendingPathComponent("config/board/allowed_signers")
+    let kept = try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    #expect(try String(contentsOf: file, encoding: .utf8) == line + "\n")
+    #expect(try mode(file) == 0o644)
+    #expect(kept == MacLine.Kept(phones: 0, others: 0))
+  }
+
+  @Test func the_line_is_added_and_every_other_line_kept_byte_for_byte() throws {
+    let before = "# my keys\r\n\(otherMac)\r\n\n\(phoneLine)"
+    let file = try temporary("allowed_signers", before)
+    let kept = try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    #expect(try String(contentsOf: file, encoding: .utf8) == before + "\n" + line + "\n")
+    #expect(kept == MacLine.Kept(phones: 1, others: 1))
+  }
+
+  @Test func a_line_with_the_same_key_is_replaced_where_it_stood() throws {
+    let older =
+      "owner namespaces=\"board/approve/v1,board/write/v1\" "
+      + openSSHPublicKey(x963: macKey, comment: "attention")
+    let file = try temporary("allowed_signers", "\(otherMac)\n\(older)\n\(phoneLine)\n")
+    try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    #expect(
+      try String(contentsOf: file, encoding: .utf8) == "\(otherMac)\n\(line)\n\(phoneLine)\n")
+  }
+
+  @Test func every_line_with_the_same_key_goes_and_the_line_is_written_once() throws {
+    let copy = "owner " + openSSHPublicKey(x963: macKey, comment: "copy")
+    let file = try temporary("allowed_signers", "\(copy)\n\(otherMac)\n\(copy)\n")
+    try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    #expect(try String(contentsOf: file, encoding: .utf8) == "\(line)\n\(otherMac)\n")
+  }
+
+  @Test func an_existing_file_keeps_its_mode() throws {
+    let file = try temporary("allowed_signers", otherMac + "\n")
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    #expect(try mode(file) == 0o600)
+  }
+
+  @Test func a_group_writable_file_is_refused_and_left_as_it_was() throws {
+    let file = try temporary("allowed_signers", otherMac + "\n")
+    try FileManager.default.setAttributes([.posixPermissions: 0o664], ofItemAtPath: file.path)
+    #expect(
+      throws: AllowedSignersFile.Refusal.writableByOthers(
+        path: file.path, mode: 0o664, owner: "you")
+    ) {
+      try AllowedSignersFile.setOwn(file, key: macKey, line: line)
+    }
+    #expect(try String(contentsOf: file, encoding: .utf8) == otherMac + "\n")
+    #expect(try mode(file) == 0o664)
+  }
+
+  @Test func another_users_file_is_refused() {
+    #expect(
+      AllowedSignersFile.refusal(
+        path: "/f", mode: 0o644, ownerID: getuid() + 1, ownerName: "ana", user: getuid())
+        == .ownedByAnother(path: "/f", mode: 0o644, owner: "ana"))
+    #expect(
+      AllowedSignersFile.refusal(
+        path: "/f", mode: 0o644, ownerID: 0, ownerName: "root", user: getuid()) == nil)
+    #expect(
+      AllowedSignersFile.refusal(
+        path: "/f", mode: 0o644, ownerID: getuid(), ownerName: "me", user: getuid()) == nil)
+  }
+
+  @Test func a_file_reached_through_a_symlink_is_written_and_the_link_kept() throws {
+    let target = try temporary("allowed_signers", otherMac + "\n")
+    let link = try directory().appendingPathComponent("allowed_signers")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+    try AllowedSignersFile.setOwn(link, key: macKey, line: line)
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == target.path)
+    #expect(try String(contentsOf: target, encoding: .utf8) == "\(otherMac)\n\(line)\n")
+  }
+
+  @Test func ssh_keygen_admits_an_order_signed_by_the_mac_after_the_write() throws {
+    let signer = P256.Signing.PrivateKey()
+    let x963 = signer.publicKey.x963Representation
+    let file = try temporary("allowed_signers", otherMac + "\n")
+    try AllowedSignersFile.setOwn(
+      file, key: x963, line: AllowedSigners.macLine(x963: x963, comment: "board"))
+    let message = Data("statement\n".utf8)
+    let armor = try sign(message: message, x963: x963, namespace: orderNamespace) {
+      try signer.signature(for: $0).rawRepresentation
+    }
+    let signature = try temporary("statement.sig", armor)
+    let status = try run(
+      "/usr/bin/ssh-keygen",
+      ["-Y", "verify", "-f", file.path, "-I", "owner", "-n", orderNamespace, "-s", signature.path],
+      input: message
+    ).status
+    #expect(status == 0)
+  }
+
+  private func mode(_ file: URL) throws -> Int {
+    (try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as! NSNumber)
+      .intValue
+  }
+}
+
+struct RefusalTests {
+  @Test func a_writable_file_names_its_mode_owner_the_chmod_and_asks_to_read_its_lines() {
+    let refusal = AllowedSignersFile.Refusal.writableByOthers(
+      path: "/Users/ana/.config/board/allowed_signers", mode: 0o666, owner: "you")
+    #expect(
+      refusal.errorDescription
+        == "/Users/ana/.config/board/allowed_signers has mode 666, owned by you, so other users can write to it and Board will not trust it. Read its lines first: each line should be a key you added. Then run chmod 644 /Users/ana/.config/board/allowed_signers."
+    )
+    #expect(refusal.summary == "mode 666 · owned by you · needs 644 or stricter")
+  }
+
+  @Test func another_users_file_names_its_owner_and_asks_to_read_its_lines() {
+    let refusal = AllowedSignersFile.Refusal.ownedByAnother(
+      path: "/f", mode: 0o644, owner: "bob")
+    #expect(
+      refusal.errorDescription
+        == "/f has mode 644, owned by bob, so another user can write to it and Board will not trust it. Read its lines first: each line should be a key you added. Then make it yours with sudo chown $USER /f and run chmod 644 /f."
+    )
+    #expect(refusal.summary == "mode 644 · owned by bob · needs to be yours, 644 or stricter")
+  }
+}
+
+struct MacLineTests {
+  let macKey = key().x963Representation
+  var line: String { AllowedSigners.macLine(x963: macKey, comment: "board") }
+  let otherMac = "owner " + openSSHPublicKey(x963: key().x963Representation, comment: "other")
+
+  @Test func a_file_without_the_key_is_missing_the_line() {
+    #expect(MacLine.status(of: line, in: "") == .missing)
+    #expect(MacLine.status(of: line, in: otherMac + "\n") == .missing)
+    #expect(MacLine.status(of: line, in: "# \(line)\n") == .missing)
+  }
+
+  @Test func a_line_of_the_key_without_the_order_namespace_is_outdated() {
+    let older =
+      "owner namespaces=\"board/approve/v1,board/write/v1\" "
+      + openSSHPublicKey(x963: macKey, comment: "attention")
+    #expect(MacLine.status(of: line, in: "\(otherMac)\n\(older)\n") == .outdated)
+  }
+
+  @Test func the_exact_line_is_current() {
+    #expect(MacLine.status(of: line, in: "\(otherMac)\n\(line)\n") == .current)
+    #expect(MacLine.status(of: line, in: "\(line)\r\n") == .current)
+    #expect(MacLine.status(of: line, in: line) == .current)
+  }
+
+  @Test func the_kept_lines_count_phones_and_other_keys_but_not_this_macs_own() {
+    let phone = AllowedSigners.boardLine(device(), scope: .suggested)!
+    let text = "# keys\n\n\(otherMac)\n\(phone)\n\(line)\n"
+    #expect(MacLine.kept(in: text, key: macKey) == MacLine.Kept(phones: 1, others: 1))
+  }
+
+  @Test func the_kept_lines_read_as_the_sheet_says_them() {
+    #expect(MacLine.Kept(phones: 0, others: 0).sentence == "Keeps no other lines")
+    #expect(
+      MacLine.Kept(phones: 1, others: 1).sentence == "Keeps 2 other lines: 1 iPhone, 1 other Mac")
+    #expect(MacLine.Kept(phones: 2, others: 0).sentence == "Keeps 2 other lines: 2 iPhones")
+    #expect(MacLine.Kept(phones: 0, others: 3).sentence == "Keeps 3 other lines: 3 other Macs")
+    #expect(MacLine.Kept(phones: 1, others: 0).sentence == "Keeps 1 other line: 1 iPhone")
+  }
+
+  @Test func the_lines_a_write_kept_read_as_the_written_sheet_says_them() {
+    #expect(MacLine.Kept(phones: 1, others: 1).past == "Kept 2 other lines")
+    #expect(MacLine.Kept(phones: 0, others: 1).past == "Kept 1 other line")
+    #expect(MacLine.Kept(phones: 0, others: 0).past == "Kept no other lines")
+  }
+
+  @Test func the_key_is_read_from_the_line() {
+    #expect(MacLine.key(of: line) == macKey)
+    #expect(MacLine.key(of: "not a line") == nil)
   }
 }

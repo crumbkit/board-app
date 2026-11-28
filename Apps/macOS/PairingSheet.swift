@@ -132,7 +132,7 @@ final class MacPairing {
   }
 }
 
-/// Removes a paired phone's lines from both allowed signers files after
+/// Removes a paired phone's line from the allowed signers file after
 /// Touch ID, then forgets its name. False when the owner cancels Touch ID.
 /// It throws when a file kept the phone's line, naming each such file.
 @MainActor

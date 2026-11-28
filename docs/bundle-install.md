@@ -23,9 +23,10 @@ arguments.
     refuses and writes nothing. It writes the missing values last.
 - Each release is copied once to `~/.local/share/board/releases/<id>`, through
   a `.partial-<id>` folder renamed when the copy is complete.
-- `board` and `attention-sign` are copied into `~/.local/bin` through
+- `board` and `board-sign` are copied into `~/.local/bin` through
   `.<name>.new`. A different copy already there is kept as
-  `~/.local/share/board/<name>.prev`.
+  `~/.local/share/board/<name>.prev`. An `attention-sign` already there
+  stays installed.
 - Step 4 runs `board init --personal` only when the config names no personal
   board, and enables again only plugins a board already enables. A plugin
   under `~/.local/share/board/plugins` that no installer linked, and one a

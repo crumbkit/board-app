@@ -274,8 +274,6 @@ id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$dest/Contents/Info
 replace=""
 if [ -n "$id" ] && [ "$id" != com.stemmacorp.board ]; then
   warn "$dest is another app ($id)."
-  [ "$id" = com.stemmacorp.flightcard ] && [ -e "$HOME/Applications/Flightcard.app" ] \
-    && say "It is an old Flightcard build, and Flightcard.app is installed beside it."
   if confirm "Move the old copy to the Trash and install Board in its place?"; then
     replace=--replace
   else
@@ -292,21 +290,21 @@ pause
 
 stage "Let this Mac's key sign for Board"
 board_signers="$HOME/.config/board/allowed_signers"
-if ! command -v attention-sign >/dev/null 2>&1; then
-  warn "attention-sign is not on your PATH, so this Mac's key cannot be read."
-  SKIPPED+=("add this Mac's key to $board_signers once attention-sign is installed")
+if ! command -v board-sign >/dev/null 2>&1; then
+  warn "board-sign is not on your PATH, so this Mac's key cannot be read."
+  SKIPPED+=("add this Mac's key to $board_signers once board-sign is installed")
 elif [ -e "$board_signers" ] && [ ! -r "$board_signers" ]; then
   warn "$board_signers cannot be read, so it was left as it is."
   SKIPPED+=("make $board_signers readable, then run bin/setup again")
-elif ! mac_key=$(attention-sign key) || [ -z "$mac_key" ]; then
-  warn "attention-sign could not print this Mac's key."
-  SKIPPED+=("add this Mac's key to $board_signers: attention-sign key failed")
-elif ! mac_line=$(attention-sign line) || [ -z "$mac_line" ]; then
-  warn "attention-sign could not print this Mac's line. One older than this checkout has no line command."
-  SKIPPED+=("add this Mac's key to $board_signers: update attention-sign, then run bin/setup again")
+elif ! mac_key=$(board-sign key) || [ -z "$mac_key" ]; then
+  warn "board-sign could not print this Mac's key."
+  SKIPPED+=("add this Mac's key to $board_signers: board-sign key failed")
+elif ! mac_line=$(board-sign line) || [ -z "$mac_line" ]; then
+  warn "board-sign could not print this Mac's line."
+  SKIPPED+=("add this Mac's key to $board_signers: board-sign line failed")
 else
-  # attention-sign builds the line, so the namespaces live only in its code.
-  say "Board checks approvals, your own writes under effects/ and your removal of .board/board.json against $board_signers."
+  # board-sign builds the line, so the namespaces live only in its code.
+  say "Board checks approvals, your own writes under effects/, your removal of .board/board.json and the orders you sign against $board_signers."
   say "This Mac's Touch ID key needs this line there (the key is cut short here):"
   note "${mac_line:0:90}…"
   if grep -qxF "$mac_line" "$board_signers" 2>/dev/null; then
@@ -329,8 +327,8 @@ step "Check that the digits match. If they don't, click Cancel on the Mac."
 step "Choose what the iPhone may approve, then click Add with Touch ID."
 step "The iPhone then shows \"You're set\"."
 pause "Press Enter once the iPhone shows \"You're set\"."
-say "The iPhone's lines in your allowed signers files:"
-grep -h "board-app/device/" ~/.config/board/allowed_signers ~/.config/attention/allowed_signers 2>/dev/null \
+say "The iPhone's line in your allowed signers file:"
+grep -h "board-app/device/" ~/.config/board/allowed_signers 2>/dev/null \
   | cut -c1-90 || warn "No paired iPhone is listed yet."
 
 finish

@@ -97,32 +97,45 @@ final class VectorTests: XCTestCase {
 
   func testADevicesBoardLineAdmitsAnApprovalAndNeverTheOwnersWrite() throws {
     let line = try XCTUnwrap(
-      AllowedSigners.deviceBoardLine(x963: Vectors.ownerKey(), label: "test", approves: true))
+      AllowedSigners.deviceBoardLine(
+        x963: Vectors.ownerKey(), label: "test", approves: true, signsOrders: false))
     XCTAssertEqual(try verify("approval.sig", "approval.statement", "approval.statement", line), 0)
     XCTAssertNotEqual(try verify("write.sig", "write.statement", "write.statement", line), 0)
+    XCTAssertNotEqual(try verify("order.sig", "order.statement", "order.statement", line), 0)
     XCTAssertNil(
-      AllowedSigners.deviceBoardLine(x963: try Vectors.ownerKey(), label: "test", approves: false))
+      AllowedSigners.deviceBoardLine(
+        x963: try Vectors.ownerKey(), label: "test", approves: false, signsOrders: false))
   }
 
-  func testADevicesAttentionLineAdmitsAnOrderAndNotAnApproval() throws {
+  func testADevicesBoardLineWithOrdersAdmitsAnOrderOnTheSameLine() throws {
     let line = try XCTUnwrap(
-      AllowedSigners.deviceAttentionLine(x963: Vectors.ownerKey(), label: "test", signsOrders: true)
-    )
+      AllowedSigners.deviceBoardLine(
+        x963: Vectors.ownerKey(), label: "test", approves: true, signsOrders: true))
+    XCTAssertTrue(line.hasPrefix("owner namespaces=\"board/approve/v1,attention/order/v1\" "))
+    XCTAssertEqual(try verify("order.sig", "order.statement", "order.statement", line), 0)
+    XCTAssertEqual(try verify("approval.sig", "approval.statement", "approval.statement", line), 0)
+    XCTAssertNotEqual(try verify("write.sig", "write.statement", "write.statement", line), 0)
+  }
+
+  func testADevicesBoardLineWithOrdersAloneAdmitsAnOrderAndNotAnApproval() throws {
+    let line = try XCTUnwrap(
+      AllowedSigners.deviceBoardLine(
+        x963: Vectors.ownerKey(), label: "test", approves: false, signsOrders: true))
     XCTAssertEqual(try verify("order.sig", "order.statement", "order.statement", line), 0)
     XCTAssertNotEqual(
       try verify("approval.sig", "approval.statement", "approval.statement", line), 0)
   }
 
-  func testTheMacsLineAdmitsAnApprovalAndTheOwnersWriteButNotAnOrder() throws {
-    let line = AllowedSigners.macLine(x963: try Vectors.ownerKey(), comment: "attention")
-    // bin/setup finds an existing line by its exact text, so the text is pinned.
-    let key = try Vectors.text("key.pub").split(separator: " ")[1]
-    XCTAssertEqual(
-      line,
-      "owner namespaces=\"board/approve/v1,board/write/v1\" ecdsa-sha2-nistp256 \(key) attention")
+  func testTheMacsLineIsTheVectorsOwnerLineAndAdmitsApprovalsWritesAndOrders() throws {
+    let line = AllowedSigners.macLine(x963: try Vectors.ownerKey(), comment: "board")
+    // bin/setup and the install sheet find an existing line by its exact
+    // text, so the text is pinned: the vectors' owner line with a comment.
+    let owner = try XCTUnwrap(
+      Vectors.text("allowed_signers").split(separator: "\n").first.map(String.init))
+    XCTAssertEqual(line, owner + " board")
     XCTAssertEqual(try verify("approval.sig", "approval.statement", "approval.statement", line), 0)
     XCTAssertEqual(try verify("write.sig", "write.statement", "write.statement", line), 0)
-    XCTAssertNotEqual(try verify("order.sig", "order.statement", "order.statement", line), 0)
+    XCTAssertEqual(try verify("order.sig", "order.statement", "order.statement", line), 0)
   }
 
   /// `ssh-keygen -Y verify`'s exit status for `signature` of `statement` by

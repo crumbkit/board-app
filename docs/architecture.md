@@ -21,8 +21,8 @@
   survey of known boards and old pieces the install sheet describes, the
   login shell's PATH, and the progress read from `install`'s lines
   ([bundle](bundle-install.md#lines-for-boardapp)). No AppKit.
-- `attention-sign`: the Mac command that shows a statement and signs it
-  with Touch ID.
+- `board-sign`: the Mac command that shows a statement and signs it
+  with Touch ID, and prints this Mac's allowed signers line.
 
 ## Apps
 

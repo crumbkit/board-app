@@ -1,7 +1,7 @@
 # Board.app
 
 Board.app is the app that ships Board on the Mac, iPhone and iPad. Today it
-holds `attention-sign`, the Touch ID window in which the owner signs
+holds `board-sign`, the Touch ID window in which the owner signs
 orders and Board approvals, and pairing of a phone with the Mac.
 
 No screen is added unless the owner has signed off its design.

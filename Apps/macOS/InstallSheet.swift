@@ -1,8 +1,10 @@
 // The signed-off install sheet on the Board window: install on a new Mac,
-// update an older install, installing, installed and install stopped. It
-// uses the system's styles and accent.
+// update an older install, installing, installed and install stopped, and
+// the step after Install that lets this Mac sign. It uses the system's
+// styles and accent.
 import AppKit
 import Installer
+import Pairing
 import SwiftUI
 
 struct InstallSheet: View {
@@ -21,11 +23,12 @@ struct InstallSheet: View {
       case .running: running
       case .installed: installed
       case .stopped(let stop): stopped(stop)
+      case .signing: signingStep(model.signing.phase)
       }
     }
     .padding(EdgeInsets(top: 22, leading: 28, bottom: 18, trailing: 28))
     .frame(width: 540)
-    .interactiveDismissDisabled(model.running)
+    .interactiveDismissDisabled(model.running || model.signing.authorizing)
   }
 
   // MARK: Install on a new Mac
@@ -40,9 +43,9 @@ struct InstallSheet: View {
       .fixedSize(horizontal: false, vertical: true)
       VStack(alignment: .leading, spacing: 0) {
         item(
-          "terminal", "board and attention-sign",
+          "terminal", "board and board-sign",
           Text(
-            "Copied to \(code("~/.local/bin")). attention-sign signs orders and approvals with Touch ID."
+            "Copied to \(code("~/.local/bin")). board-sign signs orders and approvals with Touch ID."
           ))
         Divider()
         item("doc.text", "Skills", Text("Board's skills, written to \(code("~/.claude/skills"))"))
@@ -169,7 +172,7 @@ struct InstallSheet: View {
         change(
           "Replaces",
           Text(
-            "\(code("board")) and \(code("attention-sign")) in \(code("~/.local/bin")), keeping the old ones as \(code(".prev"))"
+            "\(code("board")) and \(code("board-sign")) in \(code("~/.local/bin")), keeping the old ones as \(code(".prev"))"
           ))
         Divider()
         change("Updates", Text("Board's skills"))
@@ -352,11 +355,245 @@ struct InstallSheet: View {
       if showOutput { output }
       footer(meta: true) {
         Button(showOutput ? "Hide Output" : "Show Output") { showOutput.toggle() }
-        Button("Done", action: model.close)
+        Button("Done", action: model.finish)
           .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
       }
     }
     .onAppear { showOutput = false }
+  }
+
+  // MARK: Let this Mac sign
+
+  @ViewBuilder private func signingStep(_ phase: MacSigning.Phase) -> some View {
+    switch phase {
+    case .checking: checkingKey
+    case .noKey(let making): noKey(making: making)
+    case .line(let line, let kept, let authorizing):
+      signingLine(line, kept: kept, authorizing: authorizing)
+    case .written(let kept, let writableBy): written(kept, writableBy: writableBy)
+    case .cannotSign(let message, let exit, let making):
+      cannotSign(message: message, exit: exit, making: making)
+    case .refused(let refusal):
+      notAdded(
+        lede: "The file was not changed. Read its lines and fix its permissions, then try again.",
+        message: refusal.errorDescription ?? "", exit: refusal.summary)
+    case .failed(let message):
+      notAdded(lede: "The file was not changed.", message: message, exit: nil)
+    }
+  }
+
+  private var checkingKey: some View {
+    Group {
+      Text("Let this Mac sign").font(.title2.bold())
+      HStack(spacing: 8) {
+        ProgressView().controlSize(.small)
+        Text("Reading this Mac's key…").foregroundStyle(.secondary)
+      }
+      footer(meta: false) {
+        Button("Not Now", action: model.close).keyboardShortcut(.cancelAction)
+      }
+    }
+  }
+
+  /// Before the key exists.
+  private func noKey(making: Bool) -> some View {
+    Group {
+      Text("Let this Mac sign").font(.title2.bold())
+      Text(
+        "Board asks for Touch ID before it writes an approval or trusts an order you signed. To check those signatures, Board needs this Mac's key in one file."
+      )
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      VStack(alignment: .leading, spacing: 0) {
+        signingRow(
+          "key", "Signing key", status: "Not made yet",
+          Text(
+            "Made in this Mac's Secure Enclave, so it never leaves the chip. Each signature needs your fingerprint."
+          ))
+        Divider()
+        signingRow(
+          "checkmark", "Approvals and orders", status: "Not set up",
+          Text(
+            "\(code(signersFile)). Board checks your approvals, your own writes under \(code("effects/")) and the orders you sign against it."
+          ))
+      }
+      .modifier(Box())
+      signingGuide
+      footer(meta: true) {
+        Button("Not Now", action: model.close).keyboardShortcut(.cancelAction)
+        Button(making ? "Making Key…" : "Make Key") { Task { await model.signing.makeKey() } }
+          .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+          .disabled(making)
+      }
+    }
+  }
+
+  /// The key exists and the line is shown; nothing is written yet. While
+  /// macOS's Touch ID panel is up, both buttons wait.
+  private func signingLine(_ line: String, kept: MacLine.Kept, authorizing: Bool) -> some View {
+    Group {
+      Text("Let this Mac sign").font(.title2.bold())
+      Text("Board adds this line for this Mac's key. Every other line in the file stays as it is.")
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      VStack(alignment: .leading, spacing: 0) {
+        signingRow(
+          "checkmark", "Approvals and orders", status: nil,
+          Text(
+            "Adds to \(code(signersFile)). Lets this key sign approvals, your own writes and orders."
+          )
+        ) {
+          Text(line)
+            .font(.caption.monospaced())
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6).padding(.horizontal, 8)
+            .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.separator))
+            .padding(.top, 6)
+          Text(kept.sentence).font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+        }
+      }
+      .modifier(Box())
+      signingGuide
+      footer(meta: false) {
+        Button("Not Now", action: model.close).keyboardShortcut(.cancelAction)
+          .disabled(authorizing)
+        Button {
+          Task { await model.signing.add() }
+        } label: {
+          Label("Add with Touch ID", systemImage: "touchid")
+        }
+        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+        .disabled(authorizing)
+      }
+    }
+  }
+
+  /// The file has this Mac's line.
+  private func written(_ kept: MacLine.Kept, writableBy: String) -> some View {
+    Group {
+      Label {
+        Text("This Mac can sign")
+      } icon: {
+        Image(systemName: "checkmark.circle").foregroundStyle(.green)
+      }
+      .font(.title2.bold())
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        Image(systemName: "checkmark").foregroundStyle(.green).accessibilityLabel("Done")
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Approvals and orders: added to \(code(signersFile))")
+          Text("\(kept.past) · writable only by \(writableBy)")
+            .font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      Text("Board asks for Touch ID each time you approve a request or sign an order on this Mac.")
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 10).padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+      footer(meta: true) {
+        Button("Done", action: model.close)
+          .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+      }
+    }
+  }
+
+  /// board-sign gave no line: no Secure Enclave, no fingerprint enrolled,
+  /// or no board-sign.
+  private func cannotSign(message: String, exit: String, making: Bool) -> some View {
+    Group {
+      failedTitle("This Mac cannot sign")
+      Text(
+        making
+          ? "board-sign could not make a key in this Mac's Secure Enclave. The file was not changed. Turn on Touch ID in System Settings and try again, or approve from your iPhone."
+          : "board-sign could not read this Mac's key. The file was not changed. Try again, or approve from your iPhone."
+      )
+      .fixedSize(horizontal: false, vertical: true)
+      failure(message: message, exit: exit)
+      signingGuide
+      footer(meta: false) {
+        Button("Close", action: model.close).keyboardShortcut(.cancelAction)
+        Button("Try Again") { Task { await model.signing.retry() } }
+          .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+      }
+    }
+  }
+
+  /// Board would not trust the file, or could not read or write it. The
+  /// file is unchanged.
+  private func notAdded(lede: String, message: String, exit: String?) -> some View {
+    Group {
+      failedTitle("Board did not add the line")
+      Text(lede).fixedSize(horizontal: false, vertical: true)
+      failure(message: message, exit: exit)
+      footer(meta: false) {
+        Button("Show in Finder") { reveal(SignersFiles.board.path) }
+        Button("Close", action: model.close).keyboardShortcut(.cancelAction)
+        Button("Try Again") { Task { await model.signing.retry() } }
+          .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+      }
+    }
+  }
+
+  private var signersFile: String { SignersFiles.shown(SignersFiles.board) }
+
+  /// Opens SIGNING.md, which the release carries.
+  @ViewBuilder private var signingGuide: some View {
+    if let guide = model.folder?.appendingPathComponent("SIGNING.md") {
+      Button("How Board checks signatures") { NSWorkspace.shared.open(guide) }
+        .buttonStyle(.link).font(.callout)
+    }
+  }
+
+  private func failedTitle(_ title: String) -> some View {
+    Label {
+      Text(title)
+    } icon: {
+      Image(systemName: "xmark.circle").foregroundStyle(.red)
+    }
+    .font(.title2.bold())
+  }
+
+  /// A failure's message and, below it, how it ended.
+  private func failure(message: String, exit: String?) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(homeAsTilde(message)).font(.callout).textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+      if let exit {
+        Text(exit).font(.caption.monospaced()).foregroundStyle(.secondary)
+      }
+    }
+    .padding(.vertical, 10).padding(.horizontal, 12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.red.opacity(0.1), in: .rect(cornerRadius: 8))
+    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.red.opacity(0.3)))
+    .accessibilityAddTraits(.isStaticText)
+  }
+
+  /// A row of the signing step's box: a symbol, a title with its state, a
+  /// detail, and anything below it.
+  private func signingRow(
+    _ symbol: String, _ title: String, status: String?, _ detail: Text,
+    @ViewBuilder below: () -> some View = { EmptyView() }
+  ) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: symbol).frame(width: 18)
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Text(title).fontWeight(.semibold)
+          if let status { Text(status).font(.caption).foregroundStyle(.secondary) }
+        }
+        detail.font(.caption).foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        below()
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 10)
+    .padding(.horizontal, 12)
   }
 
   // MARK: Install stopped

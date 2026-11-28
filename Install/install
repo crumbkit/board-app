@@ -268,8 +268,8 @@ finished "Copied the release"
 # 3. Replace the binaries, keeping each old one as <name>.prev beside the
 # board data. Then remove the plugin links an older release made, since every
 # plugin is built into the new board.
-step 3 "Install board and attention-sign"
-for name in board attention-sign; do
+step 3 "Install board and board-sign"
+for name in board board-sign; do
   if [ -f "$bin/$name" ] && ! cmp -s "$bin/$name" "$release/bin/$name"; then
     cp -p "$bin/$name" "$share/$name.prev"
     echo "Kept the old $name as $share/$name.prev."
@@ -277,14 +277,14 @@ for name in board attention-sign; do
   install -m 755 "$release/bin/$name" "$bin/.$name.new"
   mv -f "$bin/.$name.new" "$bin/$name"
 done
-echo "Installed board and attention-sign in $bin."
+echo "Installed board and board-sign in $bin."
 for path in "$share"/plugins/*; do
   if [ -L "$path" ] && board_link "$path"; then
     rm -- "$path"
     echo "Removed $path, since board has the plugin built in."
   fi
 done
-finished "Installed board and attention-sign"
+finished "Installed board and board-sign"
 
 # 4. Make the personal board when the config names none, then enable again
 # the built-in plugins each known board already enables, which refreshes

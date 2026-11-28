@@ -11,17 +11,17 @@ rule = "BASE-6"
 owners = [
   "signing-owners.txt",
   "Sources/SSHSig/",
-  "Sources/attention-sign/main.swift",
+  "Sources/board-sign/main.swift",
   "Apps/iOS/PhoneKey.swift",
   "Sources/Launcher/Runner.swift",
   "Apps/Shared/BoardCloud.swift",
 ]
 checks = ["bin/check-signing, with its list in signing-owners.txt"]
-note = "bin/check-signing enforces the signing owners: SSHSig holds the namespaces, statements and signature bytes, attention-sign holds the Mac's key and PhoneKey holds the phone's. Runner launches every other program and BoardCloud opens the CloudKit database. No check covers the effects other than signing, which the BASE-6 exception records."
+note = "bin/check-signing enforces the signing owners: SSHSig holds the namespaces, statements and signature bytes, board-sign holds the Mac's key and PhoneKey holds the phone's. Runner launches every other program and BoardCloud opens the CloudKit database. No check covers the effects other than signing, which the BASE-6 exception records."
 
 [[binding]]
 rule = "BASE-28"
-owners = ["Sources/attention-sign/main.swift", "Apps/iOS/PhoneKey.swift"]
+owners = ["Sources/board-sign/main.swift", "Apps/iOS/PhoneKey.swift"]
 checks = ["bin/check-signing", "review"]
 note = "The only secrets are the two private keys, and each is created in the Secure Enclave. The file each of these two owners writes holds the enclave's wrapped key, which is useless on any other chip, so no secret value reaches a plain file."
 
@@ -37,8 +37,8 @@ realizations = [".github/workflows/ci.yml", "bin/lint", "bin/test", "bin/build-a
 
 [[decision]]
 id = "isolation"
-requirement = "attention-sign holds an AppKit window and defaults to the main actor. SSHSig, Pairing, Requests, Launcher, Installer and every test target stay nonisolated. The two app targets keep Xcode's default isolation, which the BASE-4 exception records."
-reason = "SSHSig, Pairing, Requests, Launcher and Installer hold logic, parsing and storage that the apps call from several actors. attention-sign is one process whose work runs in its window."
+requirement = "board-sign holds an AppKit window and defaults to the main actor. SSHSig, Pairing, Requests, Launcher, Installer and every test target stay nonisolated. The two app targets keep Xcode's default isolation, which the BASE-4 exception records."
+reason = "SSHSig, Pairing, Requests, Launcher and Installer hold logic, parsing and storage that the apps call from several actors. board-sign is one process whose work runs in its window. Its KeyFile is nonisolated, so BoardSignTests reads it without the main actor."
 realizations = ["Package.swift", "project.yml"]
 
 [[decision]]
@@ -47,7 +47,7 @@ requirement = """
 - SSHSig (Sources/SSHSig/JSON.swift, Effect.swift, SSHSig.swift): each String(format:) has a literal format with one integer conversion that matches its one integer argument, and the pointer withUnsafeBytes passes never leaves its closure.
 - Pairing (Sources/Pairing/Pairing.swift): String(format:) has a literal format with one %u for its one UInt32 argument, and open and rename receive Swift strings that the call bridges for its own duration.
 - Launcher (Sources/Launcher/Config.swift, EvidenceFiles.swift, Runner.swift): no pointer outlives the function that made it. Config and EvidenceFiles pass pointers that are valid for the one POSIX call, and strerror's text is copied at once. Runner's spawn keeps its spawn attributes, file actions and duplicated arguments until its deferred cleanup, after posix_spawn returns. It passes the process's environ to posix_spawn, which only reads it during the call, and nothing in the program changes the environment.
-- attention-sign (Sources/attention-sign/main.swift): the Unmanaged error that the key's access-control call fills in is only described in the failure message.
+- board-sign (Sources/board-sign/main.swift): the Unmanaged error that the key's access-control call fills in is only described in the failure message.
 - SSHSigTests (Tests/SSHSigTests/ManifestTests.swift): String(format:) has a literal format with one integer conversion for its one byte.
 """
 reason = "These modules call the C library and Foundation's format API, which strict memory safety marks unsafe. Each use sits on the single expression that needs it, and no pointer outlives the function that made it."
@@ -59,7 +59,7 @@ realizations = [
   "Sources/Launcher/Config.swift",
   "Sources/Launcher/EvidenceFiles.swift",
   "Sources/Launcher/Runner.swift",
-  "Sources/attention-sign/main.swift",
+  "Sources/board-sign/main.swift",
   "Tests/SSHSigTests/ManifestTests.swift",
 ]
 
@@ -104,7 +104,8 @@ paths = [
   "Sources/Installer/Machine.swift",
   "Sources/Pairing/Pairing.swift",
   "Sources/Requests/Request.swift",
-  "Sources/attention-sign/main.swift",
+  "Sources/board-sign/main.swift",
+  "Sources/board-sign/KeyFile.swift",
 ]
 items = ["check:owners"]
 owner = "Luke Randall"
@@ -143,7 +144,7 @@ paths = [
   "Apps/iOS/PreviewRequests.swift",
   "Apps/macOS/PhoneNotes.swift",
   "Sources/Launcher/Sidebar.swift",
-  "Sources/attention-sign/main.swift",
+  "Sources/board-sign/main.swift",
 ]
 owner = "Luke Randall"
 reason = "Each UserDefaults key and launch argument is a literal at its use site, and no catalog lists them (audit finding BA-14)."
@@ -181,7 +182,7 @@ rule = "BASE-29"
 paths = [
   "Apps/macOS/RequestRelay.swift",
   "Apps/iOS/PreviewRequests.swift",
-  "Sources/attention-sign/main.swift",
+  "Sources/board-sign/main.swift",
 ]
 owner = "Luke Randall"
 reason = "The relay and the fixture rotation write failures to standard error, where nothing in a GUI app shows them (audit finding BA-12). The signing helper is a command-line tool that uses print for its output and writes its refusals to standard error, which its callers read."

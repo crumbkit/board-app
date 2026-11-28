@@ -71,7 +71,7 @@ public struct InstallProgress: Sendable, Hashable {
   /// The label of each step, which Install/install prints on its ::step
   /// lines. A test checks that the two lists match.
   public static let labels = [
-    "Check this Mac", "Copy the release", "Install board and attention-sign",
+    "Check this Mac", "Copy the release", "Install board and board-sign",
     "Set up your boards", "Install skills", "Update Claude Code mods",
     "Remove board-controls and attention-approve",
   ]
@@ -173,13 +173,13 @@ public struct Stop: Sendable, Hashable {
       return "The installer stopped while copying the release, and changed nothing else." + still
     case .step(3):
       return
-        "The installer stopped while installing board and attention-sign. Each binary it replaced is kept as .prev in ~/.local/share/board."
+        "The installer stopped while installing board and board-sign. Each binary it replaced is kept as .prev in ~/.local/share/board."
     case .step(4):
       return
-        "The installer stopped while setting up your boards. board and attention-sign are new. The boards it finished keep their change, and the skills are still the old ones."
+        "The installer stopped while setting up your boards. board and board-sign are new. The boards it finished keep their change, and the skills are still the old ones."
     case .step(5):
       return
-        "The installer stopped while installing skills. board and attention-sign are new, your boards are set up, and the skills are still the old ones."
+        "The installer stopped while installing skills. board and board-sign are new, your boards are set up, and the skills are still the old ones."
     case .step(6):
       return
         "The installer stopped while updating the Claude Code mods. Everything else is installed. The mods it updated first are new, and the rest are still the old ones."

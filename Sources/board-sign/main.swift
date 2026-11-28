@@ -1,23 +1,33 @@
-// attention-sign: shows the owner an order statement and signs exactly those
+// board-sign: shows the owner an order statement and signs exactly those
 // bytes with a Secure Enclave key, which asks for Touch ID on every signature.
 //
-//   attention-sign key               print the public key, making it on first use
-//   attention-sign line              print this Mac's line for Board's allowed signers file
-//   attention-sign sign <statement>  show the statement, sign it, print the signature
-//   attention-sign approve <statement>  the same for a Board approval, in the namespace its first line names
+//   board-sign key               print the public key, making it when there is none
+//   board-sign line              print this Mac's line for Board's allowed signers file
+//   board-sign sign <statement>  show the statement, sign it, print the signature
+//   board-sign approve <statement>  the same for a Board approval, in the namespace its first line names
 //
 // When the owner requests changes instead, `sign` prints their feedback and exits 3.
+// The key is in ~/.config/board; KeyFile moves attention-sign's key there.
 import CryptoKit
 import Foundation
 import LocalAuthentication
 import SSHSig
 
-let keyFile = FileManager.default.homeDirectoryForCurrentUser
-  .appendingPathComponent(".config/attention/secure-enclave-key")
-
 func fail(_ message: String) -> Never {
-  FileHandle.standardError.write(Data("attention-sign: \(message)\n".utf8))
+  FileHandle.standardError.write(Data("board-sign: \(message)\n".utf8))
   exit(1)
+}
+
+/// Where the key is, after moving attention-sign's key when only it exists.
+/// A failed move is named on stderr, and the key is used where it is.
+let located = KeyFile(home: FileManager.default.homeDirectoryForCurrentUser).locate()
+let keyFile: URL
+switch located {
+case .found(let file), .none(let file):
+  keyFile = file
+case .unmoved(let file, let problem):
+  FileHandle.standardError.write(Data("board-sign: \(problem)\n".utf8))
+  keyFile = file
 }
 
 /// The key, from the Secure Enclave blob in `keyFile`. The blob is useless off this Mac's chip.
@@ -25,6 +35,12 @@ func loadKey(context: LAContext? = nil) throws -> SecureEnclave.P256.Signing.Pri
   let blob = try Data(contentsOf: keyFile)
   return try SecureEnclave.P256.Signing.PrivateKey(
     dataRepresentation: blob, authenticationContext: context)
+}
+
+/// The key, made in the Secure Enclave only when no key file exists.
+func keyMakingOne() throws -> SecureEnclave.P256.Signing.PrivateKey {
+  if case .none = located { return try makeKey() }
+  return try loadKey()
 }
 
 func makeKey() throws -> SecureEnclave.P256.Signing.PrivateKey {
@@ -47,11 +63,11 @@ MainActor.assumeIsolated {
   do {
     switch arguments.first {
     case "key":
-      let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
-      print(openSSHPublicKey(x963: key.publicKey.x963Representation, comment: "attention"))
+      let key = try keyMakingOne()
+      print(openSSHPublicKey(x963: key.publicKey.x963Representation, comment: "board"))
     case "line":
-      let key = FileManager.default.fileExists(atPath: keyFile.path) ? try loadKey() : try makeKey()
-      print(AllowedSigners.macLine(x963: key.publicKey.x963Representation, comment: "attention"))
+      let key = try keyMakingOne()
+      print(AllowedSigners.macLine(x963: key.publicKey.x963Representation, comment: "board"))
     case let command where (command == "sign" || command == "approve") && arguments.count == 2:
       guard let file = arguments.last else {
         preconditionFailure("this case matches only when there are two arguments")
@@ -69,7 +85,7 @@ MainActor.assumeIsolated {
         )
       }
       if command == "sign" && approval != nil {
-        fail("the statement is a Board approval: sign it with `attention-sign approve`")
+        fail("the statement is a Board approval: sign it with `board-sign approve`")
       }
       switch choose(statement, approval: approval) {
       case .sign: break
@@ -91,7 +107,7 @@ MainActor.assumeIsolated {
       print(armor, terminator: "")
     default:
       fail(
-        "usage: attention-sign key | attention-sign line | attention-sign sign <statement-file> | attention-sign approve <statement-file>"
+        "usage: board-sign key | board-sign line | board-sign sign <statement-file> | board-sign approve <statement-file>"
       )
     }
   } catch {
