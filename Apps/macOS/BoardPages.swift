@@ -287,7 +287,7 @@ struct PhonePage: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text(
-        "\(phone.name), key \(phone.device.fingerprint ?? phone.id), will no longer be able to approve requests or sign orders. Board deletes its lines from both allowed signers files. To use it again, pair it again."
+        "\(phone.name), key \(phone.device.fingerprint ?? phone.id), will no longer be able to approve requests or sign orders. Board deletes its line from your allowed signers file. To use it again, pair it again."
       )
     }
   }
@@ -306,17 +306,10 @@ struct PhonePage: View {
     }
   }
 
-  /// Each file the phone has a line in, and the namespaces the line admits.
+  /// The file the phone's line is in, and the namespaces the line admits.
   private var lines: [String] {
-    [
-      (SignersFiles.board, phone.device.boardLine),
-      (SignersFiles.attention, phone.device.attentionLine),
-    ]
-    .compactMap { file, line in
-      line.map {
-        "\(SignersFiles.shown(file)) · \(PairedDevice.namespaces($0).joined(separator: ", "))"
-      }
-    }
+    let namespaces = PairedDevice.namespaces(phone.device.line).joined(separator: ", ")
+    return ["\(SignersFiles.shown(SignersFiles.board)) · \(namespaces)"]
   }
 
   private func allowed(_ scope: Scope, _ title: String, _ detail: String) -> some View {

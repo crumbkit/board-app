@@ -18,7 +18,7 @@ struct Phone: Identifiable, Equatable {
 }
 
 /// What the window reads beside the relay: the phones the allowed signers
-/// files admit and the requests answered in the last 7 days.
+/// file admits and the requests answered in the last 7 days.
 @MainActor
 @Observable
 final class BoardWindowModel {
@@ -50,7 +50,7 @@ final class BoardWindowModel {
       phonesProblem = nil
     } catch {
       phonesProblem =
-        "Board could not read the allowed signers files: \(error.localizedDescription)"
+        "Board could not read the allowed signers file: \(error.localizedDescription)"
     }
     do {
       answered = try await PersonalBoard.answered(
@@ -134,7 +134,7 @@ struct BoardWindow: View {
     } message: {
       Text(
         (removalProblem ?? "")
-          + " The phone may still be able to sign. Check both allowed signers files before you rely on the removal."
+          + " The phone may still be able to sign. Check the allowed signers file before you rely on the removal."
       )
     }
     .task { await model.watch() }

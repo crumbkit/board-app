@@ -1,22 +1,19 @@
-// The devices the two allowed signers files admit, read back from the lines
+// The devices Board's allowed signers file admits, read back from the lines
 // pairing wrote, so the Mac window can list each phone and what it may sign.
 import Foundation
 import SSHSig
 
-/// A paired device as the two allowed signers files list it: the lines that
-/// end in its label.
+/// A paired device as Board's allowed signers file lists it: the line that
+/// ends in its label.
 public struct PairedDevice: Identifiable, Equatable, Sendable {
   public let id: String
-  /// Its key from the first of its lines whose key reads as P-256, or nil.
+  /// Its line's key when it reads as P-256, or nil.
   public let x963: Data?
-  /// What its lines admit: approvals when its line in Board's file names the
-  /// approval namespace, orders when its line in attention's names the order
-  /// namespace.
+  /// What its line admits: approvals when it names the approval namespace,
+  /// orders when it names the order namespace.
   public let scope: Scope
-  /// Its line in Board's file, or nil.
-  public let boardLine: String?
-  /// Its line in attention's file, or nil.
-  public let attentionLine: String?
+  /// Its line in Board's file.
+  public let line: String
 
   /// `SHA256:…`, or nil when no line's key reads.
   public var fingerprint: String? { x963.map(Device.fingerprint(x963:)) }
@@ -25,28 +22,21 @@ public struct PairedDevice: Identifiable, Equatable, Sendable {
   /// "iPhone" and the first 8 characters of its id.
   public var fallbackName: String { "iPhone \(id.prefix(8))" }
 
-  /// Every device with a line in either file, in the order Board's file and
-  /// then attention's lists them. A line counts when one of its fields is a
-  /// device label whose id is a UUID; the id is read in upper case.
-  public static func list(board: String, attention: String) -> [PairedDevice] {
-    let boardLines = deviceLines(board)
-    let attentionLines = deviceLines(attention)
+  /// Every device with a line in Board's file, in the order the file lists
+  /// them, each from its first line. A line counts when one of its fields is
+  /// a device label whose id is a UUID; the id is read in upper case.
+  public static func list(board: String) -> [PairedDevice] {
     var ids: [String] = []
-    for (id, _) in boardLines + attentionLines where !ids.contains(id) { ids.append(id) }
-    return ids.map { id in
-      let boardLine = boardLines.first { $0.id == id }?.line
-      let attentionLine = attentionLines.first { $0.id == id }?.line
+    var devices: [PairedDevice] = []
+    for (id, line) in deviceLines(board) where !ids.contains(id) {
+      ids.append(id)
+      let named = namespaces(line)
       var scope: Scope = []
-      if let boardLine, namespaces(boardLine).contains(approvalNamespace) {
-        scope.insert(.approvals)
-      }
-      if let attentionLine, namespaces(attentionLine).contains(orderNamespace) {
-        scope.insert(.orders)
-      }
-      return PairedDevice(
-        id: id, x963: [boardLine, attentionLine].lazy.compactMap { $0.flatMap(key) }.first,
-        scope: scope, boardLine: boardLine, attentionLine: attentionLine)
+      if named.contains(approvalNamespace) { scope.insert(.approvals) }
+      if named.contains(orderNamespace) { scope.insert(.orders) }
+      devices.append(PairedDevice(id: id, x963: key(line), scope: scope, line: line))
     }
+    return devices
   }
 
   /// The namespaces a line's `namespaces="…"` option lists, or none.
@@ -84,7 +74,7 @@ public struct PairedDevice: Identifiable, Equatable, Sendable {
   /// The bytes that OpenSSH's base64 reading of a key must contain: the
   /// key's base64 without its last two characters, which alone could be
   /// written another way.
-  private static func needle(_ x963: Data) -> [UInt8] {
+  static func needle(_ x963: Data) -> [UInt8] {
     Array(publicKeyBlob(x963: x963).base64EncodedString().utf8.dropLast(2))
   }
 
@@ -92,18 +82,18 @@ public struct PairedDevice: Identifiable, Equatable, Sendable {
   /// any NUL, with every ASCII space character removed, since OpenSSH skips
   /// them inside base64. A match may span the key and its neighbours; it
   /// then removes a line OpenSSH might not read, never keeps one it would.
-  private static func carries(_ line: String, _ needle: [UInt8]) -> Bool {
+  static func carries(_ line: String, _ needle: [UInt8]) -> Bool {
     let spaces: Set<UInt8> = [9, 10, 11, 12, 13, 32]
     let bytes = line.utf8.prefix { $0 != 0 }.filter { !spaces.contains($0) }
     return bytes.firstRange(of: needle) != nil
   }
 
   /// A line's fields as OpenSSH splits them: on spaces, tabs and CR.
-  private static func fields(_ line: String) -> [Substring] {
+  static func fields(_ line: String) -> [Substring] {
     line.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\r" })
   }
 
-  private static func isComment(_ line: String) -> Bool { fields(line).first?.first == "#" }
+  static func isComment(_ line: String) -> Bool { fields(line).first?.first == "#" }
 
   private static func lines(_ text: String) -> [String] {
     split(text, keepingEmpty: false).filter { !isComment($0) }
@@ -118,7 +108,7 @@ public struct PairedDevice: Identifiable, Equatable, Sendable {
   }
 
   /// The id of the first field that is a device label with a UUID id, or nil.
-  private static func label(of line: String) -> String? {
+  static func label(of line: String) -> String? {
     for field in fields(line) where field.hasPrefix(Device.labelPrefix) {
       let id = String(field.dropFirst(Device.labelPrefix.count))
       if let uuid = UUID(uuidString: id), uuid.uuidString == id.uppercased() {
@@ -135,7 +125,7 @@ public struct PairedDevice: Identifiable, Equatable, Sendable {
 
   /// The X9.63 bytes of every field that is an OpenSSH P-256 key, wherever
   /// it sits in the line.
-  private static func keys(_ line: String) -> [Data] {
+  static func keys(_ line: String) -> [Data] {
     fields(line).compactMap { field in
       guard let blob = Data(base64Encoded: String(field)), blob.count > 65 else { return nil }
       let x963 = Data(blob.suffix(65))
