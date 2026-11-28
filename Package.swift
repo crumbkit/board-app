@@ -40,7 +40,7 @@ let package = Package(
     .target(name: "Launcher", swiftSettings: baseSettings),
     .target(name: "Installer", dependencies: ["Launcher"], swiftSettings: baseSettings),
     .executableTarget(
-      name: "attention-sign", dependencies: ["SSHSig"], swiftSettings: interfaceSettings),
+      name: "board-sign", dependencies: ["SSHSig"], swiftSettings: interfaceSettings),
     .testTarget(
       name: "SSHSigTests", dependencies: ["SSHSig"], resources: [.copy("Fixtures")],
       swiftSettings: baseSettings),
@@ -55,5 +55,6 @@ let package = Package(
     .testTarget(
       name: "InstallerTests", dependencies: ["Installer", "Launcher"], swiftSettings: baseSettings),
     .testTarget(name: "GatesTests", swiftSettings: baseSettings),
+    .testTarget(name: "BoardSignTests", dependencies: ["board-sign"], swiftSettings: baseSettings),
   ]
 )

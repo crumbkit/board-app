@@ -21,7 +21,9 @@ struct BoardApp: App {
 }
 
 /// The menu bar item's menu. While the release the app carries is not
-/// installed, it offers it again.
+/// installed, it offers it again, and while this Mac's line is missing from
+/// Board's allowed signers file or lacks a namespace, it offers the signing
+/// step.
 struct BoardMenu: View {
   let toggleLauncher: () -> Void
   let install: InstallModel
@@ -42,6 +44,14 @@ struct BoardMenu: View {
         openWindow(id: BoardWindow.id)
       }
       .badge(Text(carried.board.abbreviated(8)))
+    }
+    if install.signing.needed && !install.running {
+      Divider()
+      Button("Let This Mac Sign…") {
+        install.showSigning()
+        NSApp.activate()
+        openWindow(id: BoardWindow.id)
+      }
     }
   }
 }
@@ -103,6 +113,7 @@ final class BoardAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Task { await relay.run() }
+    Task { await install.signing.refresh() }
     let panel = PanelController()
     self.panel = panel
     hotKey = HotKey { [weak panel] in panel?.toggle() }

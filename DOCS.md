@@ -10,6 +10,7 @@ The map. Each doc describes what is built; "Not built" lines say what is not.
   - [Questions](docs/sync-questions.md): the records that carry agents' questions, answers and refusals.
 - [Devices](docs/devices.md): pairing, revoking and a lost device.
 - [Board window](docs/window.md): the Mac window, what it shows, and the relay that runs while the app does.
+  - [Signing step](docs/signing-step.md): the install sheet's step that adds this Mac's line to Board's allowed signers file.
 - [TestFlight](docs/testflight.md): sending the iPhone app through TestFlight, and what the owner sets up first.
 - [Bundle](docs/bundle.md): the Board release the Mac app carries, and how it installs.
   - [Building a release](docs/bundle-building.md): `bin/bundle`, what it needs, and how it is tested.

@@ -2,18 +2,17 @@
 
 ## What is signed
 
-- `attention-sign sign` signs an order statement in `attention/order/v1`.
-- `attention-sign approve` signs a Board statement in the namespace its first
+- `board-sign sign` signs an order statement in `attention/order/v1`.
+- `board-sign approve` signs a Board statement in the namespace its first
   line names: `board/approve/v1` for a pending effect, `board/write/v1` for the
   owner's own write under `effects/`.
 - The phone signs `Effect.approval` of the effect it shows, in
   `board/approve/v1`, and a pairing transcript with no namespace.
-- Each signature needs the device's biometry. [Security](security.md) covers
-  the keys.
+- Each signature needs biometry; [security](security.md) covers the keys.
 
-Board and attention verify approvals and orders with `ssh-keygen -Y verify`
-against their allowed signers files; nothing here does. The Mac verifies one
-signature itself: the phone's pairing proof, with CryptoKit, in `Pairing`.
+Board verifies every signature with `ssh-keygen -Y verify` against
+`~/.config/board/allowed_signers`. Only the phone's pairing proof is checked
+here, with CryptoKit, in `Pairing`.
 
 ## Owners
 
@@ -22,18 +21,20 @@ signature itself: the phone's pairing proof, with CryptoKit, in `Pairing`.
   line (`AllowedSigners`). `Pairing` owns the pairing transcript and checks
   its proof; it may import CryptoKit. The namespace constants have `package` access, so the
   apps reach a namespace only through `Approval` or an `AllowedSigners` line.
-- `attention-sign` owns the Mac's key. `attention-sign line` prints the Mac's
-  line for Board's file, so `bin/setup` holds no namespace. `bin/bundle`
-  bundles it and `Install/install` installs it.
+- `board-sign` owns the Mac's key. It moves the older `attention-sign`'s
+  key to Board's folder and leaves a link. `board-sign line` prints the
+  Mac's line, so neither `bin/setup` nor the app holds a namespace.
 - `PhoneKey` owns the phone's key: it signs approvals and the pairing proof.
-  The Mac's pairing sheet may use LocalAuthentication for Touch ID.
-- `AllowedSignersFile.update` and `bin/setup` are the only writers of the
-  allowed signers files. Review keeps this; no gate checks it.
+  The Mac's pairing sheet and its signing step (`MacSigning`) may use
+  LocalAuthentication for Touch ID.
+- `AllowedSignersFile.update`, `AllowedSignersFile.setOwn` and `bin/setup`
+  are the only writers of Board's allowed signers file. Review keeps this;
+  no gate checks it.
 
 `bin/check-signing`, run by `bin/lint`, holds a fixed list of signing
 literals: the framework names, the Secure Enclave and key APIs, the
 namespaces, the SSH signature markers, `allowed_signers`, `ssh-keygen` and
-`attention-sign`. It searches every file outside docs, Markdown and the
+the two signers' names. It searches every file outside docs, Markdown and the
 vectors, following symlinks. `signing-owners.txt` names the paths that may
 hold each literal; a hit anywhere else fails. Only tests may name `SecKey`.
 

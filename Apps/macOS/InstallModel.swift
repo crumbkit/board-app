@@ -14,7 +14,12 @@ final class InstallModel {
     case running
     case installed
     case stopped(Stop)
+    /// The step after Install: Let this Mac sign.
+    case signing
   }
+
+  /// The signing step, and whether this Mac's line is in Board's file.
+  let signing = MacSigning()
 
   /// The release the app carries, or nil when this build carries none.
   let carried: Release?
@@ -134,6 +139,32 @@ final class InstallModel {
     sheetShown = false
     phase = .offered
     check()
+    Task { await signing.refresh() }
+  }
+
+  /// Done after Install: the signing step when this Mac's line is missing
+  /// or lacks a namespace, and else the sheet goes down.
+  func finish() {
+    Task {
+      await signing.refresh()
+      if signing.needed {
+        await startSigning()
+      } else {
+        close()
+      }
+    }
+  }
+
+  /// The menu's Let This Mac Sign… item: shows the signing step on its own.
+  func showSigning() {
+    guard !running else { return }
+    sheetShown = true
+    Task { await startSigning() }
+  }
+
+  private func startSigning() async {
+    phase = .signing
+    await signing.start()
   }
 
   /// Stops a running install and waits for it, before the app quits.

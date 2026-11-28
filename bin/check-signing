@@ -27,6 +27,7 @@ SSHSIG
 BEGIN SSH SIGNATURE
 allowed_signers
 ssh-keygen
+board-sign
 attention-sign'
 failed=$(echo "$literals" | while IFS= read -r literal; do
   globs=$(awk -F"$tab" -v l="$literal" '$1 == l { print $2 }' "$owners")

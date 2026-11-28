@@ -1,7 +1,7 @@
 import SSHSig
 import XCTest
 
-/// `attention-sign approve` signs only a statement whose first line names a Board
+/// `board-sign approve` signs only a statement whose first line names a Board
 /// approval, and `sign` refuses one. Each refusal has an admitted twin.
 final class ApprovalTests: XCTestCase {
   func testAStatementIsAnApprovalOnlyWhenItsFirstLineIsExactlyABoardHeader() {

@@ -48,7 +48,7 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
 @Test func the_seven_labels_are_the_installers_steps_in_order() {
   #expect(
     InstallProgress.labels == [
-      "Check this Mac", "Copy the release", "Install board and attention-sign",
+      "Check this Mac", "Copy the release", "Install board and board-sign",
       "Set up your boards", "Install skills", "Update Claude Code mods",
       "Remove board-controls and attention-approve",
     ])
@@ -157,11 +157,11 @@ private func progress(_ lines: [RunLine]) -> InstallProgress {
   }
   #expect(
     summary(4)
-      == "The installer stopped while setting up your boards. board and attention-sign are new. The boards it finished keep their change, and the skills are still the old ones."
+      == "The installer stopped while setting up your boards. board and board-sign are new. The boards it finished keep their change, and the skills are still the old ones."
   )
   #expect(
     summary(5)
-      == "The installer stopped while installing skills. board and attention-sign are new, your boards are set up, and the skills are still the old ones."
+      == "The installer stopped while installing skills. board and board-sign are new, your boards are set up, and the skills are still the old ones."
   )
   #expect(
     summary(6)
